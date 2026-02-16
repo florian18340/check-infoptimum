@@ -1,10 +1,21 @@
 document.addEventListener('DOMContentLoaded', () => {
     const loginSection = document.getElementById('loginSection');
+    const registerSection = document.getElementById('registerSection');
     const mainSection = document.getElementById('mainSection');
+    
     const loginForm = document.getElementById('loginForm');
     const emailInput = document.getElementById('emailInput');
     const passwordInput = document.getElementById('passwordInput');
     const loginError = document.getElementById('loginError');
+    
+    const registerForm = document.getElementById('registerForm');
+    const regEmailInput = document.getElementById('regEmailInput');
+    const regPasswordInput = document.getElementById('regPasswordInput');
+    const regConfirmPasswordInput = document.getElementById('regConfirmPasswordInput');
+    const registerError = document.getElementById('registerError');
+
+    const showRegisterLink = document.getElementById('showRegisterLink');
+    const showLoginLink = document.getElementById('showLoginLink');
     const logoutBtn = document.getElementById('logoutBtn');
 
     const addUrlForm = document.getElementById('addUrlForm');
@@ -15,8 +26,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let autoCheckInterval = null;
 
-    // Vérifier si l'utilisateur est déjà connecté (en essayant de charger la liste)
+    // Vérifier si l'utilisateur est déjà connecté
     checkSession();
+
+    // --- Gestion de l'interface Login / Register ---
+
+    if (showRegisterLink) {
+        showRegisterLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            loginSection.style.display = 'none';
+            registerSection.style.display = 'block';
+            registerError.style.display = 'none';
+        });
+    }
+
+    if (showLoginLink) {
+        showLoginLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            registerSection.style.display = 'none';
+            loginSection.style.display = 'block';
+            loginError.style.display = 'none';
+        });
+    }
+
+    // --- Actions ---
 
     loginForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -42,6 +75,45 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error(err);
             loginError.textContent = "Erreur de connexion au serveur";
             loginError.style.display = 'block';
+        });
+    });
+
+    registerForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = regEmailInput.value;
+        const password = regPasswordInput.value;
+        const confirmPassword = regConfirmPasswordInput.value;
+
+        if (password !== confirmPassword) {
+            registerError.textContent = "Les mots de passe ne correspondent pas.";
+            registerError.style.display = 'block';
+            return;
+        }
+
+        fetch('api.php?action=register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Inscription réussie, on connecte l'utilisateur directement
+                showMainInterface();
+                registerError.style.display = 'none';
+                // Reset form
+                regEmailInput.value = '';
+                regPasswordInput.value = '';
+                regConfirmPasswordInput.value = '';
+            } else {
+                registerError.textContent = data.message;
+                registerError.style.display = 'block';
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            registerError.textContent = "Erreur lors de l'inscription";
+            registerError.style.display = 'block';
         });
     });
 
@@ -74,6 +146,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- Fonctions utilitaires ---
+
     function checkSession() {
         fetch('api.php?action=list')
             .then(response => {
@@ -94,11 +168,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showLoginInterface() {
         loginSection.style.display = 'block';
+        registerSection.style.display = 'none';
         mainSection.style.display = 'none';
     }
 
     function showMainInterface() {
         loginSection.style.display = 'none';
+        registerSection.style.display = 'none';
         mainSection.style.display = 'block';
         loadUrls();
     }
@@ -142,13 +218,16 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .then(response => response.json())
             .then(data => {
-                if (data.success) loadUrls();
+                if (data.success) {
+                    loadUrls();
+                } else {
+                    alert('Erreur: ' + (data.message || 'Impossible de supprimer'));
+                }
             });
         }
     }
 
     function checkAllStocks() {
-        // Indicateur visuel simple
         const rows = tableBody.querySelectorAll('tr');
         rows.forEach(row => {
             if(row.cells.length > 1) {
@@ -163,15 +242,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function startAutoCheck() {
         if (autoCheckInterval) clearInterval(autoCheckInterval);
-        
-        // Première vérification immédiate
         checkAllStocks();
-
-        // Vérification toutes les 5 minutes (300000 ms)
         autoCheckInterval = setInterval(() => {
             checkAllStocks();
         }, 300000);
-        
         alert('Vérification automatique activée (toutes les 5 min). Gardez cet onglet ouvert.');
     }
 

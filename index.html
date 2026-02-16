@@ -19,6 +19,24 @@
                 <button type="submit">Se connecter</button>
             </form>
             <p id="loginError" style="color: red; display: none;"></p>
+            <p style="margin-top: 15px;">
+                Pas encore de compte ? <a href="#" id="showRegisterLink">S'inscrire</a>
+            </p>
+        </div>
+
+        <!-- Section d'inscription -->
+        <div id="registerSection" style="display: none; text-align: center;">
+            <h2>Inscription</h2>
+            <form id="registerForm" style="flex-direction: column;">
+                <input type="email" id="regEmailInput" placeholder="Email" required>
+                <input type="password" id="regPasswordInput" placeholder="Mot de passe" required>
+                <input type="password" id="regConfirmPasswordInput" placeholder="Confirmer le mot de passe" required>
+                <button type="submit" style="background-color: #27ae60;">Créer un compte</button>
+            </form>
+            <p id="registerError" style="color: red; display: none;"></p>
+            <p style="margin-top: 15px;">
+                Déjà un compte ? <a href="#" id="showLoginLink">Se connecter</a>
+            </p>
         </div>
 
         <!-- Section principale (cachée par défaut) -->

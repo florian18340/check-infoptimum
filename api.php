@@ -22,11 +22,22 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS users (
 
 $pdo->exec("CREATE TABLE IF NOT EXISTS monitored_urls (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
     url VARCHAR(255) NOT NULL,
     last_status ENUM('available', 'out_of_stock', 'error', 'unknown') DEFAULT 'unknown',
     last_check TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 )");
+
+// Migration : Ajouter la colonne user_id si elle n'existe pas (pour les anciennes installations)
+try {
+    $pdo->exec("ALTER TABLE monitored_urls ADD COLUMN user_id INT NOT NULL DEFAULT 1");
+    // On suppose que l'ID 1 est l'admin par défaut créé précédemment
+} catch (PDOException $e) {
+    // La colonne existe probablement déjà, on ignore
+}
+
 
 // Création d'un utilisateur par défaut si aucun n'existe
 $stmt = $pdo->query("SELECT COUNT(*) FROM users");
@@ -38,6 +49,43 @@ if ($stmt->fetchColumn() == 0) {
 }
 
 $action = $_GET['action'] ?? '';
+
+// Gestion de l'inscription (Public)
+if ($action === 'register') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $email = $data['email'] ?? '';
+    $pass = $data['password'] ?? '';
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'message' => 'Email invalide']);
+        exit;
+    }
+
+    if (strlen($pass) < 6) {
+        echo json_encode(['success' => false, 'message' => 'Le mot de passe doit faire au moins 6 caractères']);
+        exit;
+    }
+
+    // Vérifier si l'email existe déjà
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+    $stmt->execute([$email]);
+    if ($stmt->fetch()) {
+        echo json_encode(['success' => false, 'message' => 'Cet email est déjà utilisé']);
+        exit;
+    }
+
+    // Création du compte
+    $hashedPass = password_hash($pass, PASSWORD_DEFAULT);
+    $stmt = $pdo->prepare("INSERT INTO users (email, password) VALUES (?, ?)");
+    if ($stmt->execute([$email, $hashedPass])) {
+        // Connexion automatique après inscription
+        $_SESSION['user_id'] = $pdo->lastInsertId();
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Erreur lors de l\'inscription']);
+    }
+    exit;
+}
 
 // Gestion du Login (Public)
 if ($action === 'login') {
@@ -66,16 +114,18 @@ if ($action === 'logout') {
 }
 
 // Vérification de l'authentification pour toutes les autres actions
-// Exception pour le cron si on veut l'appeler en ligne de commande ou via un token secret (ici simplifié)
-// Pour l'instant, on protège tout le reste par session.
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
     echo json_encode(['error' => 'Non autorisé']);
     exit;
 }
 
+$userId = $_SESSION['user_id'];
+
 if ($action === 'list') {
-    $stmt = $pdo->query("SELECT * FROM monitored_urls ORDER BY created_at DESC");
+    // On ne récupère que les URLs de l'utilisateur connecté
+    $stmt = $pdo->prepare("SELECT * FROM monitored_urls WHERE user_id = ? ORDER BY created_at DESC");
+    $stmt->execute([$userId]);
     echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     exit;
 }
@@ -85,8 +135,8 @@ if ($action === 'add') {
     $url = $data['url'] ?? '';
     
     if (filter_var($url, FILTER_VALIDATE_URL)) {
-        $stmt = $pdo->prepare("INSERT INTO monitored_urls (url) VALUES (?)");
-        $stmt->execute([$url]);
+        $stmt = $pdo->prepare("INSERT INTO monitored_urls (user_id, url) VALUES (?, ?)");
+        $stmt->execute([$userId, $url]);
         echo json_encode(['success' => true]);
     } else {
         echo json_encode(['success' => false, 'message' => 'URL invalide']);
@@ -98,14 +148,22 @@ if ($action === 'delete') {
     $data = json_decode(file_get_contents('php://input'), true);
     $id = $data['id'] ?? 0;
     
-    $stmt = $pdo->prepare("DELETE FROM monitored_urls WHERE id = ?");
-    $stmt->execute([$id]);
-    echo json_encode(['success' => true]);
+    // On vérifie que l'URL appartient bien à l'utilisateur
+    $stmt = $pdo->prepare("DELETE FROM monitored_urls WHERE id = ? AND user_id = ?");
+    $stmt->execute([$id, $userId]);
+    
+    if ($stmt->rowCount() > 0) {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Impossible de supprimer cet élément']);
+    }
     exit;
 }
 
 if ($action === 'check_all') {
-    $stmt = $pdo->query("SELECT * FROM monitored_urls");
+    // On vérifie uniquement les URLs de l'utilisateur connecté
+    $stmt = $pdo->prepare("SELECT * FROM monitored_urls WHERE user_id = ?");
+    $stmt->execute([$userId]);
     $urls = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($urls as $item) {
