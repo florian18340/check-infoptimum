@@ -17,6 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const showRegisterLink = document.getElementById('showRegisterLink');
     const showLoginLink = document.getElementById('showLoginLink');
     const logoutBtn = document.getElementById('logoutBtn');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const notificationEmailForm = document.getElementById('notificationEmailForm');
+    const notifEmailInput = document.getElementById('notifEmailInput');
+    const settingsMessage = document.getElementById('settingsMessage');
 
     const addUrlForm = document.getElementById('addUrlForm');
     const urlInput = document.getElementById('urlInput');
@@ -125,6 +130,39 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     });
 
+    settingsBtn.addEventListener('click', () => {
+        if (settingsPanel.style.display === 'none') {
+            settingsPanel.style.display = 'block';
+            loadUserInfo();
+        } else {
+            settingsPanel.style.display = 'none';
+        }
+    });
+
+    notificationEmailForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = notifEmailInput.value;
+        
+        fetch('api.php?action=update_notification_email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                settingsMessage.textContent = "Email mis à jour avec succès !";
+                settingsMessage.style.color = "green";
+                settingsMessage.style.display = "block";
+                setTimeout(() => { settingsMessage.style.display = "none"; }, 3000);
+            } else {
+                settingsMessage.textContent = "Erreur : " + data.message;
+                settingsMessage.style.color = "red";
+                settingsMessage.style.display = "block";
+            }
+        });
+    });
+
     addUrlForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const url = urlInput.value.trim();
@@ -190,6 +228,18 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .then(data => {
                 if (data) renderTable(data);
+            });
+    }
+
+    function loadUserInfo() {
+        fetch('api.php?action=get_user_info')
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.notification_email) {
+                    notifEmailInput.value = data.notification_email;
+                } else if (data && data.email) {
+                    notifEmailInput.value = data.email;
+                }
             });
     }
 

@@ -42,7 +42,18 @@
         <!-- Section principale (cachée par défaut) -->
         <div id="mainSection" style="display: none;">
             <div class="header-actions">
+                <button id="settingsBtn" class="secondary-btn" style="margin-right: 10px;">Paramètres</button>
                 <button id="logoutBtn" class="secondary-btn">Déconnexion</button>
+            </div>
+
+            <div id="settingsPanel" style="display: none; background: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <h3>Paramètres de notification</h3>
+                <form id="notificationEmailForm">
+                    <label for="notifEmailInput">Email pour les alertes :</label>
+                    <input type="email" id="notifEmailInput" placeholder="votre@email.com" required>
+                    <button type="submit">Enregistrer</button>
+                </form>
+                <p id="settingsMessage" style="display: none; margin-top: 5px;"></p>
             </div>
 
             <div class="add-url-section">
