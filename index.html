@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vérificateur de Stock Infoptimum</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Vérificateur de Stock Infoptimum</h1>
+
+        <!-- Section de connexion -->
+        <div id="loginSection">
+            <h2>Connexion</h2>
+            <form id="loginForm">
+                <input type="email" id="emailInput" placeholder="Email" required>
+                <input type="password" id="passwordInput" placeholder="Mot de passe" required>
+                <button type="submit">Se connecter</button>
+            </form>
+            <p id="loginError" style="color: red; display: none;"></p>
+        </div>
+
+        <!-- Section principale (cachée par défaut) -->
+        <div id="mainSection" style="display: none;">
+            <div class="header-actions">
+                <button id="logoutBtn" class="secondary-btn">Déconnexion</button>
+            </div>
+
+            <div class="add-url-section">
+                <h2>Ajouter une vente privée à surveiller</h2>
+                <form id="addUrlForm">
+                    <input type="url" id="urlInput" placeholder="https://www.bourges.infoptimum.com/..." required>
+                    <button type="submit">Ajouter</button>
+                </form>
+            </div>
+
+            <div class="list-section">
+                <h2>Ventes surveillées</h2>
+                <div class="controls">
+                    <button id="checkAllBtn">Vérifier tout le stock maintenant</button>
+                    <label>
+                        <input type="checkbox" id="autoCheckToggle"> Vérification automatique (toutes les 5 min)
+                    </label>
+                </div>
+                <div id="results">
+                    <table id="stockTable">
+                        <thead>
+                            <tr>
+                                <th>URL</th>
+                                <th>État</th>
+                                <th>Dernière vérification</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Lignes générées par JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
