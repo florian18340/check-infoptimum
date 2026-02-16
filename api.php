@@ -33,7 +33,6 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS monitored_urls (
 // Migration : Ajouter la colonne user_id si elle n'existe pas (pour les anciennes installations)
 try {
     $pdo->exec("ALTER TABLE monitored_urls ADD COLUMN user_id INT NOT NULL DEFAULT 1");
-    // On suppose que l'ID 1 est l'admin par défaut créé précédemment
 } catch (PDOException $e) {
     // La colonne existe probablement déjà, on ignore
 }
@@ -66,7 +65,6 @@ if ($action === 'register') {
         exit;
     }
 
-    // Vérifier si l'email existe déjà
     $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
     $stmt->execute([$email]);
     if ($stmt->fetch()) {
@@ -74,11 +72,9 @@ if ($action === 'register') {
         exit;
     }
 
-    // Création du compte
     $hashedPass = password_hash($pass, PASSWORD_DEFAULT);
     $stmt = $pdo->prepare("INSERT INTO users (email, password) VALUES (?, ?)");
     if ($stmt->execute([$email, $hashedPass])) {
-        // Connexion automatique après inscription
         $_SESSION['user_id'] = $pdo->lastInsertId();
         echo json_encode(['success' => true]);
     } else {
@@ -123,7 +119,6 @@ if (!isset($_SESSION['user_id'])) {
 $userId = $_SESSION['user_id'];
 
 if ($action === 'list') {
-    // On ne récupère que les URLs de l'utilisateur connecté
     $stmt = $pdo->prepare("SELECT * FROM monitored_urls WHERE user_id = ? ORDER BY created_at DESC");
     $stmt->execute([$userId]);
     echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
@@ -148,7 +143,6 @@ if ($action === 'delete') {
     $data = json_decode(file_get_contents('php://input'), true);
     $id = $data['id'] ?? 0;
     
-    // On vérifie que l'URL appartient bien à l'utilisateur
     $stmt = $pdo->prepare("DELETE FROM monitored_urls WHERE id = ? AND user_id = ?");
     $stmt->execute([$id, $userId]);
     
@@ -161,15 +155,19 @@ if ($action === 'delete') {
 }
 
 if ($action === 'check_all') {
-    // On vérifie uniquement les URLs de l'utilisateur connecté
-    $stmt = $pdo->prepare("SELECT * FROM monitored_urls WHERE user_id = ?");
+    $stmt = $pdo->prepare("SELECT m.*, u.email FROM monitored_urls m JOIN users u ON m.user_id = u.id WHERE m.user_id = ?");
     $stmt->execute([$userId]);
     $urls = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($urls as $item) {
-        $status = checkStock($item['url']);
+        $newStatus = checkStock($item['url']);
+        
+        if ($newStatus === 'available' && $item['last_status'] !== 'available') {
+            sendSmtpEmail($item['email'], "Stock Disponible ! - Infoptimum", "Le produit est disponible : " . $item['url']);
+        }
+
         $updateStmt = $pdo->prepare("UPDATE monitored_urls SET last_status = ?, last_check = NOW() WHERE id = ?");
-        $updateStmt->execute([$status, $item['id']]);
+        $updateStmt->execute([$newStatus, $item['id']]);
     }
     
     echo json_encode(['success' => true]);
@@ -191,17 +189,106 @@ function checkStock($url) {
         return 'error';
     }
     
-    if (stripos($html, 'Epuisé') !== false || 
-        stripos($html, 'Rupture de stock') !== false ||
-        stripos($html, 'Victime de son succès') !== false) {
+    // Critère 1 : Présence de l'image spécifique "vp-imprime-coupon.png"
+    if (stripos($html, 'images/vp-imprime-coupon.png') !== false) {
+        return 'available';
+    }
+
+    // Critère 2 : Analyse du nombre d'offres restantes
+    // Phrase cible : "Nombre d'offre(s) restante(s)" suivi du nombre
+    // On utilise une regex qui cherche la phrase, ignore les caractères non-numériques (comme les espaces ou ":")
+    // et capture le premier nombre qui suit.
+    if (preg_match('/Nombre d\'offre\(s\) restante\(s\)[^0-9]*(\d+)/i', $html, $matches)) {
+        if (intval($matches[1]) > 0) {
+            return 'available';
+        } else {
+            return 'out_of_stock';
+        }
+    }
+
+    // Fallback : Anciens critères (au cas où la structure change légèrement)
+    if (stripos($html, 'id="produit-epuise"') !== false || 
+        stripos($html, 'Victime de son succès') !== false || 
+        stripos($html, 'Epuisé') !== false) {
         return 'out_of_stock';
     }
     
-    if (stripos($html, 'Ajouter au panier') !== false || 
-        stripos($html, 'Commander') !== false) {
+    if (stripos($html, 'id="form_add_cart"') !== false || 
+        stripos($html, 'Ajouter au panier') !== false) {
         return 'available';
     }
     
     return 'unknown';
+}
+
+function sendSmtpEmail($to, $subject, $body) {
+    global $smtp_host, $smtp_port, $smtp_user, $smtp_pass, $smtp_from, $smtp_secure;
+
+    if (empty($smtp_host)) {
+        mail($to, $subject, $body, "From: $smtp_from");
+        return;
+    }
+
+    try {
+        $socket = fsockopen(($smtp_secure === 'ssl' ? 'ssl://' : '') . $smtp_host, $smtp_port, $errno, $errstr, 10);
+        if (!$socket) {
+            error_log("SMTP Connect Error: $errstr ($errno)");
+            return;
+        }
+
+        // Fonction pour lire la réponse du serveur
+        $read = function($socket) {
+            $response = '';
+            while ($str = fgets($socket, 515)) {
+                $response .= $str;
+                if (substr($str, 3, 1) == ' ') break;
+            }
+            return $response;
+        };
+
+        $read($socket); // Banner
+
+        fputs($socket, "EHLO " . $_SERVER['SERVER_NAME'] . "\r\n");
+        $read($socket);
+
+        if ($smtp_secure === 'tls') {
+            fputs($socket, "STARTTLS\r\n");
+            $read($socket);
+            stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+            fputs($socket, "EHLO " . $_SERVER['SERVER_NAME'] . "\r\n");
+            $read($socket);
+        }
+
+        if (!empty($smtp_user) && !empty($smtp_pass)) {
+            fputs($socket, "AUTH LOGIN\r\n");
+            $read($socket);
+            fputs($socket, base64_encode($smtp_user) . "\r\n");
+            $read($socket);
+            fputs($socket, base64_encode($smtp_pass) . "\r\n");
+            $read($socket);
+        }
+
+        fputs($socket, "MAIL FROM: <$smtp_from>\r\n");
+        $read($socket);
+        fputs($socket, "RCPT TO: <$to>\r\n");
+        $read($socket);
+        fputs($socket, "DATA\r\n");
+        $read($socket);
+
+        $headers = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-type: text/plain; charset=utf-8\r\n";
+        $headers .= "From: $smtp_from\r\n";
+        $headers .= "To: $to\r\n";
+        $headers .= "Subject: $subject\r\n";
+
+        fputs($socket, "$headers\r\n$body\r\n.\r\n");
+        $read($socket);
+        
+        fputs($socket, "QUIT\r\n");
+        fclose($socket);
+
+    } catch (Exception $e) {
+        error_log("SMTP Error: " . $e->getMessage());
+    }
 }
 ?>
