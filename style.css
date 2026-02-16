@@ -21,7 +21,7 @@ body {
 }
 
 .logo {
-    max-width: 150px;
+    max-width: 80px; /* Taille réduite */
     height: auto;
 }
 
@@ -32,6 +32,7 @@ h1, h2, h3 {
 
 h1 {
     margin-top: 0;
+    font-size: 1.5em;
 }
 
 .add-url-section {
