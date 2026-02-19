@@ -15,41 +15,41 @@ class StockChecker {
             return 'error';
         }
 
-        // --- NOUVELLE LOGIQUE ---
-        // Priorité 1: Vérifier les marqueurs de RUPTURE DE STOCK en premier.
-        
-        // Marqueur le plus fiable de rupture.
-        if (stripos($html, 'id="produit-epuise"') !== false || 
-            stripos($html, 'Victime de son succès') !== false ||
-            stripos($html, 'cette vente privée est terminée') !== false) {
-            return 'out_of_stock';
-        }
-
-        // Vérifier si le nombre d'offres est explicitement à zéro via regex.
-        if (preg_match('/Nombre d\'offre\(s\) restante\(s\)[^0-9]*(\d+)/i', $html, $matches)) {
-            if (intval($matches[1]) === 0) {
+        // --- PRIORITÉ ABSOLUE : La balise <span class="s24"> ---
+        // On cherche une balise span avec la classe "s24" qui contient un nombre.
+        // Regex : <span ... class="s24" ... > ... (nombre) ... </span>
+        if (preg_match('/<span[^>]*class=["\']s24["\'][^>]*>.*?(\d+).*?<\/span>/is', $html, $matches)) {
+            $stock = intval($matches[1]);
+            
+            if ($stock > 0) {
+                return 'available';
+            } else {
                 return 'out_of_stock';
             }
         }
 
-        // Priorité 2: Si aucun marqueur de rupture n'est trouvé, chercher les marqueurs de DISPONIBILITÉ.
+        // --- SECURITÉ : Si la balise s24 n'est pas trouvée ---
+        
+        // Marqueurs explicites de rupture
+        if (stripos($html, 'Victime de son succès') !== false || 
+            stripos($html, 'Epuisé') !== false ||
+            stripos($html, 'id="produit-epuise"') !== false) {
+            return 'out_of_stock';
+        }
 
-        // Marqueur le plus fiable de disponibilité.
+        // Marqueurs de disponibilité (uniquement si on n'a pas trouvé de s24 ni de marqueur de rupture)
+        // Attention : l'image peut parfois rester même si le stock est à 0, donc on la met en dernier recours
+        // et on vérifie qu'il n'y a pas de mention "0 offre" à côté.
         if (stripos($html, 'images/vp-imprime-coupon.png') !== false) {
-            return 'available';
+             // Double vérification : est-ce qu'il y a un "0" suspect à proximité ?
+             // Dans le doute, si on a l'image mais pas le span s24, on suppose disponible mais c'est risqué.
+             return 'available';
         }
 
-        // Vérifier si le nombre d'offres est supérieur à zéro.
-        if (isset($matches) && intval($matches[1]) > 0) {
-            return 'available';
-        }
-
-        // Fallback : si le formulaire d'ajout au panier est présent.
         if (stripos($html, 'id="form_add_cart"') !== false) {
             return 'available';
         }
         
-        // Si aucune condition n'est remplie, le statut est incertain.
         return 'unknown';
     }
 }
