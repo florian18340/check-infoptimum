@@ -25,7 +25,7 @@ class StockChecker {
             return 'out_of_stock';
         }
 
-        // Vérifier si le nombre d'offres est explicitement à zéro.
+        // Vérifier si le nombre d'offres est explicitement à zéro via regex.
         if (preg_match('/Nombre d\'offre\(s\) restante\(s\)[^0-9]*(\d+)/i', $html, $matches)) {
             if (intval($matches[1]) === 0) {
                 return 'out_of_stock';
