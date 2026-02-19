@@ -14,33 +14,42 @@ class StockChecker {
         if ($httpCode != 200 || !$html) {
             return 'error';
         }
+
+        // --- NOUVELLE LOGIQUE ---
+        // Priorité 1: Vérifier les marqueurs de RUPTURE DE STOCK en premier.
         
-        // Critère 1 : Présence de l'image spécifique "vp-imprime-coupon.png"
-        if (stripos($html, 'images/vp-imprime-coupon.png') !== false) {
-            return 'available';
+        // Marqueur le plus fiable de rupture.
+        if (stripos($html, 'id="produit-epuise"') !== false || 
+            stripos($html, 'Victime de son succès') !== false ||
+            stripos($html, 'cette vente privée est terminée') !== false) {
+            return 'out_of_stock';
         }
 
-        // Critère 2 : Analyse du nombre d'offres restantes
+        // Vérifier si le nombre d'offres est explicitement à zéro.
         if (preg_match('/Nombre d\'offre\(s\) restante\(s\)[^0-9]*(\d+)/i', $html, $matches)) {
-            if (intval($matches[1]) > 0) {
-                return 'available';
-            } else {
+            if (intval($matches[1]) === 0) {
                 return 'out_of_stock';
             }
         }
 
-        // Fallback : Anciens critères
-        if (stripos($html, 'id="produit-epuise"') !== false || 
-            stripos($html, 'Victime de son succès') !== false || 
-            stripos($html, 'Epuisé') !== false) {
-            return 'out_of_stock';
+        // Priorité 2: Si aucun marqueur de rupture n'est trouvé, chercher les marqueurs de DISPONIBILITÉ.
+
+        // Marqueur le plus fiable de disponibilité.
+        if (stripos($html, 'images/vp-imprime-coupon.png') !== false) {
+            return 'available';
         }
-        
-        if (stripos($html, 'id="form_add_cart"') !== false || 
-            stripos($html, 'Ajouter au panier') !== false) {
+
+        // Vérifier si le nombre d'offres est supérieur à zéro.
+        if (isset($matches) && intval($matches[1]) > 0) {
+            return 'available';
+        }
+
+        // Fallback : si le formulaire d'ajout au panier est présent.
+        if (stripos($html, 'id="form_add_cart"') !== false) {
             return 'available';
         }
         
+        // Si aucune condition n'est remplie, le statut est incertain.
         return 'unknown';
     }
 }
