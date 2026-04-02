@@ -1,9 +1,19 @@
 <?php
 class StockChecker {
-    private $logFile = __DIR__ . '/../checker.log';
+    private $logFile;
+
+    public function __construct() {
+        // Définir le chemin absolu du fichier log à la racine du projet
+        $this->logFile = __DIR__ . '/../checker.log';
+        
+        // S'assurer que le fichier est accessible en écriture
+        if (!file_exists($this->logFile)) {
+            @file_put_contents($this->logFile, "--- Initialisation du Log Checker ---\n");
+        }
+    }
 
     private function log($message) {
-        file_put_contents($this->logFile, date('Y-m-d H:i:s') . " - " . $message . "\n", FILE_APPEND);
+        @file_put_contents($this->logFile, date('Y-m-d H:i:s') . " - " . $message . "\n", FILE_APPEND);
     }
 
     public function check($url) {
