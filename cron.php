@@ -1,18 +1,34 @@
 <?php
-// Script à exécuter via une tâche CRON (ex: toutes les 5 minutes)
-// Commande : php /chemin/vers/check-infoptimum/cron.php
+/**
+ * Script à exécuter via une tâche CRON (ex: toutes les 5 minutes)
+ * Commande : php /chemin/vers/check-infoptimum/cron.php
+ */
 
-require_once 'config.php';
-require_once 'models/MonitoredUrl.php';
-require_once 'models/User.php';
-require_once 'services/StockChecker.php';
-require_once 'services/EmailService.php';
+// Définition de chemins absolus pour éviter les problèmes de CRON
+$dir = __DIR__;
+$configFile = $dir . '/config.php';
+
+if (!file_exists($configFile)) {
+    die("Erreur : Le fichier de configuration 'config.php' est manquant à la racine du projet.\nVeuillez copier 'config.php.example' vers 'config.php' et le configurer.\n");
+}
+
+require_once $configFile;
+require_once $dir . '/models/MonitoredUrl.php';
+require_once $dir . '/models/User.php';
+require_once $dir . '/services/StockChecker.php';
+require_once $dir . '/services/EmailService.php';
+
+// Initialisation des variables de DB avec fallback (évite les erreurs d'analyse statique)
+$dbHost = $host ?? 'localhost';
+$dbName = $dbname ?? 'infoptimum_stock';
+$dbUser = $username ?? 'root';
+$dbPass = $password ?? '';
 
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $username, $password);
+    $pdo = new PDO("mysql:host=$dbHost;dbname=$dbName;charset=utf8", $dbUser, $dbPass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
-    die("Erreur de connexion DB : " . $e->getMessage());
+    die("Erreur de connexion DB : " . $e->getMessage() . "\n");
 }
 
 // Configuration Email
@@ -30,23 +46,29 @@ $checker = new StockChecker();
 $emailService = new EmailService($emailConfig);
 
 // Récupérer TOUTES les URLs surveillées avec les infos utilisateurs
-// On doit modifier la requête pour récupérer aussi le notification_email
 $stmt = $pdo->query("SELECT m.*, u.email, u.notification_email FROM monitored_urls m JOIN users u ON m.user_id = u.id");
 $urls = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-echo "Début de la vérification (" . count($urls) . " URLs)...\n";
+echo "[" . date('Y-m-d H:i:s') . "] Début de la vérification (" . count($urls) . " URLs)...\n";
 
 foreach ($urls as $item) {
     echo "Vérification de : " . $item['url'] . "... ";
     $newStatus = $checker->check($item['url']);
     echo "Statut : $newStatus\n";
     
+    // Détermination de l'adresse de notification
+    $targetEmail = !empty($item['notification_email']) ? $item['notification_email'] : $item['email'];
+
+    // Cas 1 : Le stock devient disponible
     if ($newStatus === 'available' && $item['last_status'] !== 'available') {
-        // Utiliser l'email de notification s'il est défini, sinon l'email du compte
-        $targetEmail = !empty($item['notification_email']) ? $item['notification_email'] : $item['email'];
-        
-        echo " -> ENVOI EMAIL à " . $targetEmail . "\n";
+        echo " -> ENVOI EMAIL STOCK à " . $targetEmail . "\n";
         $emailService->sendStockNotification($targetEmail, $item['url']);
+    }
+
+    // Cas 2 : Le système rencontre une erreur
+    if ($newStatus === 'error' && $item['last_status'] !== 'error') {
+        echo " -> ENVOI EMAIL ERREUR à " . $targetEmail . "\n";
+        $emailService->sendErrorNotification($targetEmail, $item['url']);
     }
 
     $urlModel->updateStatus($item['id'], $newStatus);
