@@ -3,7 +3,7 @@
  * Script à exécuter via une tâche CRON (ex: toutes les 5 minutes)
  * Commande : php /chemin/vers/check-infoptimum/cron.php
  */
-
+exit;
 // Définition de chemins absolus pour éviter les problèmes de CRON
 $dir = __DIR__;
 $configFile = $dir . '/config.php';
