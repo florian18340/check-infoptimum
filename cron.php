@@ -11,9 +11,9 @@ date_default_timezone_set('Europe/Paris');
 $currentDay = date('N'); // 1 (lundi) à 7 (dimanche)
 $currentHour = (int)date('H'); // 0 à 23
 
-// Vérifier si nous sommes entre lundi (1) et vendredi (5)
-if ($currentDay > 5) {
-    echo "[" . date('Y-m-d H:i:s') . "] CRON suspendu : nous sommes le week-end.\n";
+// Vérifier si nous sommes entre lundi (1) et samedi (6)
+if ($currentDay > 6) {
+    echo "[" . date('Y-m-d H:i:s') . "] CRON suspendu : nous sommes dimanche.\n";
     exit;
 }
 
@@ -85,6 +85,9 @@ foreach ($urls as $item) {
     }
 
     $urlModel->updateStatus($item['id'], $newStatus);
+    
+    // Ajout d'une petite pause entre chaque URL pour être plus discret (2 à 5 secondes)
+    sleep(rand(2, 5));
 }
 
 echo "Fin de la vérification.\n";
