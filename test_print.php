@@ -6,7 +6,7 @@ $loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous2.php";
 $refererUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php";
 $cookieFile = __DIR__ . '/test_cookies.txt';
 
-echo "--- TEST D'AFFICHAGE HTML COMPLET (POST-CONNEXION) ---\n<br>\n";
+echo "--- TEST D'IMPRESSION (LIEN DIRECT) ---\n<br>\n";
 
 try {
     $dbHost = $host ?? 'localhost';
@@ -47,51 +47,59 @@ $headers = [
     'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
     'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language: fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Cache-Control: max-age=0',
     'Connection: keep-alive',
-    'Origin: https://www.bourges.infoptimum.com',
-    'Referer: ' . $refererUrl,
     'Upgrade-Insecure-Requests: 1'
 ];
 
-curl_setopt($ch, CURLOPT_URL, $refererUrl);
-curl_setopt($ch, CURLOPT_POST, false);
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-curl_exec($ch);
-
-$postData = http_build_query([
+// --- ETAPE 1: Connexion ---
+curl_setopt($ch, CURLOPT_URL, $loginUrl);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
     'email' => $infoptimum_email,
     'mdp' => $infoptimum_pass,
     'action' => 'ident',
     'submit' => 'Valider'
-]);
-
-curl_setopt($ch, CURLOPT_URL, $loginUrl);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, $postData); 
-
-$postHeaders = $headers;
-$postHeaders[] = 'Content-Type: application/x-www-form-urlencoded';
-curl_setopt($ch, CURLOPT_HTTPHEADER, $postHeaders);
-
+])); 
+curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge($headers, ['Content-Type: application/x-www-form-urlencoded', 'Referer: ' . $refererUrl, 'Origin: https://www.bourges.infoptimum.com']));
 $response = curl_exec($ch);
 $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL); 
 
 if (stripos($effectiveUrl, 'mon-compte.php') === false) {
-    echo "-> ÉCHEC de la connexion. Redirigé vers : $effectiveUrl\n<br>\n";
+    echo "-> ÉCHEC de la connexion.\n<br>\n";
     die();
 }
-
 echo "-> Connexion RÉUSSIE !\n<br>\n<br>\n";
 
-echo "2. Accès à la page de la vente privée...\n<br>\n";
-curl_setopt($ch, CURLOPT_URL, $url);
-curl_setopt($ch, CURLOPT_POST, false);
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-$response = curl_exec($ch);
+// --- ETAPE 2: Extraire l'ID de la vente ---
+$matches = [];
+if (preg_match('/-(\d+)\.html$/', $url, $matches)) {
+    $venteId = $matches[1];
+    echo "2. ID de la vente extrait : $venteId\n<br>\n";
+} else {
+    die("Impossible d'extraire l'ID de la vente depuis l'URL.");
+}
 
-echo "\n--- CODE HTML REÇU PAR LE SCRIPT ---\n<br>\n";
-echo "<pre>" . htmlspecialchars($response) . "</pre>";
+// --- ETAPE 3: Simuler le clic sur le lien d'impression ---
+$impressionUrl = "https://www.bourges.infoptimum.com/vente-privee-impression.php?ID=" . $venteId;
+echo "3. Simulation du clic sur : <a href='$impressionUrl' target='_blank'>$impressionUrl</a>\n<br>\n";
+
+curl_setopt($ch, CURLOPT_URL, $impressionUrl);
+curl_setopt($ch, CURLOPT_POST, false);
+curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); // Headers GET normaux
+$printResponse = curl_exec($ch);
+$printHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+echo "Code HTTP de l'impression : $printHttpCode\n<br>\n";
+
+// Sur une impression réussie, le site redirige souvent ou affiche une page de confirmation.
+// Un code 200 ou 302 est un bon signe.
+if ($printHttpCode == 200 || $printHttpCode == 302) {
+    echo "<strong>-> Impression potentiellement VALIDÉE par le serveur !</strong>\n<br>\n";
+    echo "Extrait de la page d'impression : <br>\n";
+    echo "<pre>" . htmlspecialchars(substr($printResponse, 0, 500)) . "...</pre>";
+} else {
+    echo "-> ÉCHEC de l'impression.\n<br>\n";
+}
 
 curl_close($ch);
 ?>
