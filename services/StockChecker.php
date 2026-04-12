@@ -25,14 +25,12 @@ class StockChecker {
         
         $this->log("Tentative de connexion à Infoptimum avec : " . $this->infoptimum_email);
         
-        // Utilisation de la nouvelle URL de connexion
         $loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php";
         
         $ch = curl_init($loginUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         
-        // Initialisation propre du cookie
         if (file_exists($this->cookieFile)) { @unlink($this->cookieFile); }
         curl_setopt($ch, CURLOPT_COOKIEJAR, $this->cookieFile);
         curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
@@ -63,10 +61,15 @@ class StockChecker {
 
     private function autoPrint($html) {
         $this->log("Tentative d'impression / ajout au panier...");
-        if (preg_match('/<form[^>]*id=["\']form_add_cart["\'][^>]*action=["\'](.*?)["\'][^>]*>(.*?)<\/form>/is', $html, $m)) {
+        
+        // Nouvelle regex plus large pour chercher le bouton "Imprimez votre coupon" ou "Ajouter au panier"
+        if (preg_match('/<form[^>]*action=["\']([^"\']*)["\'][^>]*>.*?(Imprimez|Ajouter|Panier)/is', $html, $m)) {
             $action = $m[1];
-            preg_match_all('/<input[^>]*name=["\'](.*?)["\'][^>]*value=["\'](.*?)["\'][^>]*>/is', $m[2], $inputs);
-            $data = array_combine($inputs[1], $inputs[2]);
+            preg_match_all('/<input[^>]*name=["\'](.*?)["\'][^>]*value=["\'](.*?)["\'][^>]*>/is', $m[0], $inputs);
+            $data = [];
+            if (!empty($inputs[1])) {
+                $data = array_combine($inputs[1], $inputs[2]);
+            }
 
             $this->log("Soumission du formulaire d'impression vers : $action");
             $ch = curl_init($action);
@@ -75,20 +78,38 @@ class StockChecker {
             curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
             curl_setopt($ch, CURLOPT_COOKIEJAR, $this->cookieFile);
             curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+            if (!empty($data)) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+            }
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
             $response = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
             
             $this->log("Résultat de l'impression (Code HTTP: $code)");
-            if (stripos($response, 'Le produit a été ajouté') !== false || stripos($response, 'Panier') !== false || $code == 302 || $code == 200) {
+            if (stripos($response, 'Le produit a été ajouté') !== false || stripos($response, 'Panier') !== false || stripos($response, 'Imprim') !== false || $code == 302 || $code == 200) {
                  $this->log("Impression potentiellement REUSSIE !");
                  return true;
             }
+        } elseif (preg_match('/<a[^>]*href=["\']([^"\']*(?:imprime|coupon|panier)[^"\']*)["\'][^>]*>/i', $html, $m)) {
+            // Parfois l'impression est juste un lien
+            $action = "https://www.bourges.infoptimum.com/" . ltrim($m[1], '/');
+            $this->log("Suivi du lien d'impression : $action");
+            
+            $ch = curl_init($action);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            $this->log("Lien cliqué (Code: $code)");
+            return true;
         } else {
-             $this->log("Formulaire d'impression INTROUVABLE dans le HTML.");
+             $this->log("Formulaire ou lien d'impression INTROUVABLE dans le HTML.");
         }
         return false;
     }
@@ -110,7 +131,7 @@ class StockChecker {
         curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
         curl_setopt($ch, CURLOPT_COOKIEJAR, $this->cookieFile);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
         $html = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
@@ -125,7 +146,7 @@ class StockChecker {
             $status = (intval($matches[1]) > 0) ? 'available' : 'out_of_stock';
         } elseif (stripos($html, 'Victime de son succès') !== false || stripos($html, 'id="produit-epuise"') !== false) {
             $status = 'out_of_stock';
-        } elseif (stripos($html, 'images/vp-imprime-coupon.png') !== false) {
+        } elseif (stripos($html, 'images/vp-imprime-coupon.png') !== false || stripos($html, 'Imprimez votre coupon') !== false) {
             $status = 'available';
         }
 
@@ -133,7 +154,6 @@ class StockChecker {
 
         if ($status === 'available' && $shouldPrint) {
             $printSuccess = $this->autoPrint($html);
-            // On retourne un statut spécial pour dire au contrôleur que l'impression a réussi
             if ($printSuccess) return 'available_and_printed';
         } elseif ($shouldPrint && $status !== 'available') {
             $this->log("Stock indisponible, on n'imprime pas.");
