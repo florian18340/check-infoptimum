@@ -12,7 +12,7 @@
             <img src="images/logo.svg" alt="Logo" class="logo">
         </div>
         <h1>Vérificateur de Stock</h1>
-
+        
         <div id="loginSection" style="display: none;">
             <h2>Connexion</h2>
             <form id="loginForm">
@@ -64,7 +64,6 @@
             </div>
         </div>
     </div>
-    <!-- Ajout du ?v=... pour forcer le vidage du cache navigateur -->
     <script src="script.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>
