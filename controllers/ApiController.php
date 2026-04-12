@@ -34,15 +34,12 @@ class ApiController {
             case 'check_all': $this->checkAll(); break;
             case 'get_user_info': $this->getUserInfo(); break;
             case 'update_notification_email': $this->updateNotificationEmail(); break;
-            // Nouveaux endpoints pour les comptes Infoptimum
             case 'list_accounts': $this->listAccounts(); break;
             case 'add_account': $this->addAccount(); break;
             case 'delete_account': $this->deleteAccount(); break;
             default: echo json_encode(['error' => 'Action inconnue']);
         }
     }
-
-    // ... (Login, Register, Logout, etc. restent identiques)
 
     private function login() {
         $data = json_decode(file_get_contents('php://input'), true);
@@ -101,8 +98,6 @@ class ApiController {
         echo json_encode(['success' => $userModel->updateNotificationEmail($_SESSION['user_id'], $data['email'] ?? '')]);
     }
 
-    // --- GESTION DES COMPTES INFOPTIMUM ---
-
     private function listAccounts() {
         $accountModel = new InfoptimumAccount($this->pdo);
         echo json_encode($accountModel->findAllByUserId($_SESSION['user_id']));
@@ -124,8 +119,7 @@ class ApiController {
     }
 
     private function checkAll() {
-        // Ignorer la limite de temps pour cette requête car elle peut être longue avec des "sleep"
-        set_time_limit(0);
+        set_time_limit(0); // Ignorer le temps d'exécution maximum pour cette tâche
 
         $urlModel = new MonitoredUrl($this->pdo);
         $accountModel = new InfoptimumAccount($this->pdo);
@@ -137,29 +131,42 @@ class ApiController {
         $notifEmail = !empty($userInfo['notification_email']) ? $userInfo['notification_email'] : $userInfo['email'];
 
         foreach ($urls as $url) {
-            // Pour chaque URL, on vérifie s'il y a des comptes qui peuvent encore commander
-            $availableAccounts = $accountModel->findAvailableForUrl($url['id']);
+            // 1. Vérification Globale (Anonyme)
+            $globalStatus = $checker->checkOnly($url['url']);
+            $finalStatus = $globalStatus;
             
-            if (empty($availableAccounts)) {
-                $newStatus = $checker->checkOnly($url['url']); // Simple vérification sans commande
-            } else {
-                // S'il reste des comptes, on prend le premier pour la vérification + commande
-                $account = $availableAccounts[0];
-                $checker->setCredentials($account['email'], $account['password']);
-                $newStatus = $checker->check($url['url']);
+            // 2. Si du stock est dispo globalement, on tente avec les comptes un par un
+            if ($globalStatus === 'available') {
+                $availableAccounts = $accountModel->findAvailableForUrl($url['id']);
                 
-                // On vérifie le résultat réel de l'impression
-                if ($newStatus === 'available_and_printed') {
-                    $accountModel->markAsOrdered($account['id'], $url['id']);
-                    $newStatus = 'available'; // On remet au statut standard pour l'affichage
+                foreach ($availableAccounts as $account) {
+                    $checker->setCredentials($account['email'], $account['password']);
+                    $accountStatus = $checker->check($url['url']);
+                    
+                    if ($accountStatus === 'available_and_printed') {
+                        // L'impression a réussi ! On enregistre pour ne plus utiliser ce compte sur cette vente
+                        $accountModel->markAsOrdered($account['id'], $url['id']);
+                        $finalStatus = 'available'; // Statut global pour l'UI
+                        break; // On arrête la boucle des comptes, la commande est passée
+                    } elseif ($accountStatus === 'out_of_stock_for_account') {
+                        // Ce compte ne peut pas imprimer (déjà utilisé, quota atteint, etc.)
+                        // On l'enregistre comme "failed" pour ne pas réessayer inutilement la prochaine fois
+                        $accountModel->markAsOrdered($account['id'], $url['id'], 'failed');
+                        // On continue la boucle pour essayer avec le compte suivant
+                        continue; 
+                    }
+                }
+                
+                // Si on a épuisé tous les comptes sans succès (tous en "failed")
+                if (empty($availableAccounts)) {
+                     $finalStatus = 'available'; // Il y a du stock, mais aucun compte pour commander
                 }
             }
 
-            if ($newStatus === 'available' && $url['last_status'] !== 'available') {
+            if ($finalStatus === 'available' && $url['last_status'] !== 'available') {
                 $emailService->sendStockNotification($notifEmail, $url['url']);
             }
-            $urlModel->updateStatus($url['id'], $newStatus);
-            // On ajoute une pause d'une seconde entre chaque vérification quand c'est fait via le front
+            $urlModel->updateStatus($url['id'], $finalStatus);
             sleep(1);
         }
         echo json_encode(['success' => true]);

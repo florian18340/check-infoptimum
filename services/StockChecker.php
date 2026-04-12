@@ -58,11 +58,9 @@ class StockChecker {
         
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_POST, true);
-        
-        // On utilise 'mdp' comme découvert dans nos tests
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
             'email' => $this->infoptimum_email, 
-            'mdp' => $this->infoptimum_pass
+            'pass' => $this->infoptimum_pass
         ]));
         
         $response = curl_exec($ch);
@@ -70,13 +68,12 @@ class StockChecker {
         $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         curl_close($ch);
         
-        // Si on est redirigé vers mon-compte.php, c'est un succès garanti !
-        if (stripos($effectiveUrl, 'mon-compte.php') !== false) {
+        if (stripos($effectiveUrl, 'mon-compte.php') !== false || stripos($response, 'Déconnexion') !== false) {
             $this->log("Connexion Infoptimum REUSSIE pour " . $this->infoptimum_email);
             return true;
         }
         
-        $this->log("Echec de la connexion Infoptimum pour " . $this->infoptimum_email . " (URL: $effectiveUrl)");
+        $this->log("Echec de la connexion Infoptimum pour " . $this->infoptimum_email . " (Code: $httpCode, URL: $effectiveUrl)");
         return false;
     }
 
@@ -147,11 +144,13 @@ class StockChecker {
     }
 
     public function checkOnly($url) {
+        // Vider les cookies pour être 100% sûr de faire une requête anonyme
+        if (file_exists($this->cookieFile)) { @unlink($this->cookieFile); }
         return $this->performCheck($url, false);
     }
 
     private function performCheck($url, $shouldPrint) {
-        $this->log("Verification URL : $url");
+        $this->log("Verification URL : $url (Avec connexion: " . ($shouldPrint ? "OUI" : "NON") . ")");
         $ch = curl_init(trim($url));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
@@ -167,7 +166,7 @@ class StockChecker {
             'Upgrade-Insecure-Requests: 1'
         ];
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
+        
         $html = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
@@ -182,7 +181,7 @@ class StockChecker {
             $status = (intval($matches[1]) > 0) ? 'available' : 'out_of_stock';
         } elseif (stripos($html, 'Victime de son succès') !== false || stripos($html, 'id="produit-epuise"') !== false) {
             $status = 'out_of_stock';
-        } elseif (stripos($html, 'images/vp-imprime-coupon.png') !== false || stripos($html, 'Imprimez votre coupon') !== false) {
+        } elseif (stripos($html, 'images/vp-imprime-coupon.png') !== false || stripos($html, 'Imprimez votre coupon') !== false || stripos($html, 'Ajouter au panier') !== false) {
             $status = 'available';
         }
 
@@ -190,9 +189,16 @@ class StockChecker {
 
         if ($status === 'available' && $shouldPrint) {
             $printSuccess = $this->autoPrint($html);
-            if ($printSuccess) return 'available_and_printed';
+            if ($printSuccess) {
+                return 'available_and_printed';
+            } else {
+                // S'il est disponible mais que l'impression échoue (pas de bouton), 
+                // c'est sûrement que ce compte a déjà commandé.
+                return 'out_of_stock_for_account'; 
+            }
         } elseif ($shouldPrint && $status !== 'available') {
-            $this->log("Stock indisponible, on n'imprime pas.");
+            $this->log("Stock indisponible pour ce compte, on n'imprime pas.");
+            return 'out_of_stock_for_account';
         }
 
         return $status;

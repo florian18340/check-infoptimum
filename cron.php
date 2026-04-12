@@ -1,4 +1,5 @@
 <?php
+exit;
 date_default_timezone_set('Europe/Paris');
 if (date('N') > 6 || (int)date('H') < 8 || (int)date('H') >= 19) exit;
 
@@ -30,32 +31,49 @@ $stmt = $pdo->query("SELECT m.*, u.email as user_email, u.notification_email FRO
 $urls = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($urls as $url) {
-    $availableAccounts = $accountModel->findAvailableForUrl($url['id']);
+    // 1. Vérification Globale (Anonyme)
+    $globalStatus = $checker->checkOnly($url['url']);
+    $finalStatus = $globalStatus;
     
-    if (empty($availableAccounts)) {
-        $newStatus = $checker->checkOnly($url['url']);
-    } else {
-        $account = $availableAccounts[0];
-        $checker->setCredentials($account['email'], $account['password']);
-        $newStatus = $checker->check($url['url']);
+    // 2. Si du stock est dispo globalement, on tente avec les comptes un par un
+    if ($globalStatus === 'available') {
+        $availableAccounts = $accountModel->findAvailableForUrl($url['id']);
         
-        if ($newStatus === 'available_and_printed') {
-            $accountModel->markAsOrdered($account['id'], $url['id']);
-            $newStatus = 'available'; // Remettre à 'available' pour l'affichage
+        foreach ($availableAccounts as $account) {
+            $checker->setCredentials($account['email'], $account['password']);
+            $accountStatus = $checker->check($url['url']);
+            
+            if ($accountStatus === 'available_and_printed') {
+                // L'impression a réussi ! On enregistre pour ne plus utiliser ce compte sur cette vente
+                $accountModel->markAsOrdered($account['id'], $url['id']);
+                $finalStatus = 'available'; // Statut global pour l'UI
+                break; // On arrête la boucle des comptes, la commande est passée
+            } elseif ($accountStatus === 'out_of_stock_for_account') {
+                // Ce compte ne peut pas imprimer (déjà utilisé, quota atteint, etc.)
+                // On l'enregistre comme "failed" pour ne pas réessayer inutilement la prochaine fois
+                $accountModel->markAsOrdered($account['id'], $url['id'], 'failed');
+                // On continue la boucle pour essayer avec le compte suivant
+                continue; 
+            }
+        }
+        
+        // Si on a épuisé tous les comptes sans succès (tous en "failed")
+        if (empty($availableAccounts)) {
+             $finalStatus = 'available'; // Il y a du stock, mais aucun compte pour commander
         }
     }
 
     $targetEmail = !empty($url['notification_email']) ? $url['notification_email'] : $url['user_email'];
 
-    if ($newStatus === 'available' && $url['last_status'] !== 'available') {
+    if ($finalStatus === 'available' && $url['last_status'] !== 'available') {
         $emailService->sendStockNotification($targetEmail, $url['url']);
     }
 
-    if ($newStatus === 'error' && $url['last_status'] !== 'error') {
+    if ($finalStatus === 'error' && $url['last_status'] !== 'error') {
         $emailService->sendErrorNotification($targetEmail, $url['url']);
     }
 
-    $urlModel->updateStatus($url['id'], $newStatus);
+    $urlModel->updateStatus($url['id'], $finalStatus);
     sleep(rand(2, 5));
 }
 ?>
