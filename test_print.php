@@ -10,7 +10,7 @@ echo "--- TEST DE PROXY WEBSHARE (IP DIRECTE) ---\n\n";
 
 $proxy_host = 'p.webshare.io'; 
 $proxy_port = '80'; 
-$proxy_user = 'uoyujbsn'; 
+$proxy_user = 'uoyujbsn-rotate';
 $proxy_pass = 'jtprxdma17l9'; 
 
 $ch = curl_init();
