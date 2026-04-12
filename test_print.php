@@ -6,7 +6,7 @@ $loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous2.php";
 $refererUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php";
 $cookieFile = __DIR__ . '/test_cookies.txt';
 
-echo "--- TEST D'IMPRESSION (LIEN DIRECT) ---\n<br>\n";
+echo "--- TEST D'IMPRESSION (AVEC TOKEN) ---\n<br>\n";
 
 try {
     $dbHost = $host ?? 'localhost';
@@ -54,12 +54,7 @@ $headers = [
 // --- ETAPE 1: Connexion ---
 curl_setopt($ch, CURLOPT_URL, $loginUrl);
 curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
-    'email' => $infoptimum_email,
-    'mdp' => $infoptimum_pass,
-    'action' => 'ident',
-    'submit' => 'Valider'
-])); 
+curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(['email' => $infoptimum_email, 'mdp' => $infoptimum_pass, 'action' => 'ident'])); 
 curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge($headers, ['Content-Type: application/x-www-form-urlencoded', 'Referer: ' . $refererUrl, 'Origin: https://www.bourges.infoptimum.com']));
 $response = curl_exec($ch);
 $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL); 
@@ -70,35 +65,56 @@ if (stripos($effectiveUrl, 'mon-compte.php') === false) {
 }
 echo "-> Connexion RÉUSSIE !\n<br>\n<br>\n";
 
-// --- ETAPE 2: Extraire l'ID de la vente ---
-$matches = [];
-if (preg_match('/-(\d+)\.html$/', $url, $matches)) {
-    $venteId = $matches[1];
-    echo "2. ID de la vente extrait : $venteId\n<br>\n";
+// --- ETAPE 2: Charger la page de la vente pour trouver le token ---
+echo "2. Accès à la page de la vente pour trouver le token...\n<br>\n";
+curl_setopt($ch, CURLOPT_URL, $url);
+curl_setopt($ch, CURLOPT_POST, false);
+curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+$venteHtml = curl_exec($ch);
+
+$impressionUrl = '';
+$token = '';
+
+if (preg_match('/<form[^>]*action=["\']([^"\']*(?:vente-privee-impression|panier)[^"\']*)["\'][^>]*>(.*?)<\/form>/is', $venteHtml, $formMatch)) {
+    $impressionUrl = $formMatch[1];
+    
+    if (preg_match('/<input[^>]*type=["\']hidden["\'][^>]*name=["\']token["\'][^>]*value=["\'](.*?)["\'][^>]*>/i', $formMatch[2], $tokenMatch)) {
+        $token = $tokenMatch[1];
+        echo "-> Token trouvé : $token\n<br>\n";
+    } else {
+        echo "-> Formulaire trouvé, mais pas de champ 'token'.\n<br>\n";
+    }
 } else {
-    die("Impossible d'extraire l'ID de la vente depuis l'URL.");
+    die("Impossible de trouver le formulaire d'impression sur la page.");
 }
 
-// --- ETAPE 3: Simuler le clic sur le lien d'impression ---
-$impressionUrl = "https://www.bourges.infoptimum.com/vente-privee-impression.php?ID=" . $venteId;
-echo "3. Simulation du clic sur : <a href='$impressionUrl' target='_blank'>$impressionUrl</a>\n<br>\n";
+// --- ETAPE 3: Simuler le clic avec le token ---
+if (!empty($impressionUrl) && !empty($token)) {
+    // L'URL d'impression est souvent relative, on la reconstruit
+    $fullImpressionUrl = "https://www.bourges.infoptimum.com/" . ltrim($impressionUrl, '/');
+    
+    // On ajoute le token aux données à envoyer
+    $postData = http_build_query(['token' => $token]);
+    
+    echo "3. Simulation du clic sur : $fullImpressionUrl avec le token...\n<br>\n";
 
-curl_setopt($ch, CURLOPT_URL, $impressionUrl);
-curl_setopt($ch, CURLOPT_POST, false);
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); // Headers GET normaux
-$printResponse = curl_exec($ch);
-$printHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_setopt($ch, CURLOPT_URL, $fullImpressionUrl);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge($headers, ['Content-Type: application/x-www-form-urlencoded', 'Referer: ' . $url, 'Origin: https://www.bourges.infoptimum.com']));
 
-echo "Code HTTP de l'impression : $printHttpCode\n<br>\n";
+    $printResponse = curl_exec($ch);
+    $printHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-// Sur une impression réussie, le site redirige souvent ou affiche une page de confirmation.
-// Un code 200 ou 302 est un bon signe.
-if ($printHttpCode == 200 || $printHttpCode == 302) {
-    echo "<strong>-> Impression potentiellement VALIDÉE par le serveur !</strong>\n<br>\n";
-    echo "Extrait de la page d'impression : <br>\n";
-    echo "<pre>" . htmlspecialchars(substr($printResponse, 0, 500)) . "...</pre>";
+    echo "Code HTTP de l'impression : $printHttpCode\n<br>\n";
+
+    if ($printHttpCode == 200 || $printHttpCode == 302) {
+        echo "<strong>-> Impression potentiellement VALIDÉE par le serveur !</strong>\n<br>\n";
+    } else {
+        echo "-> ÉCHEC de l'impression.\n<br>\n";
+    }
 } else {
-    echo "-> ÉCHEC de l'impression.\n<br>\n";
+    echo "-> ÉCHEC : Impossible de simuler le clic sans URL d'action ou token.\n<br>\n";
 }
 
 curl_close($ch);
