@@ -61,12 +61,11 @@ curl_setopt($ch, CURLOPT_POST, false);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 $html = curl_exec($ch);
 
-// Extraction des champs cachés du formulaire de login
+// Extraction des champs cachés
 $hiddenFields = [];
 if (preg_match('/<form[^>]*>(.*?)<\/form>/is', $html, $formMatch)) {
     if (preg_match_all('/<input[^>]*type=["\']hidden["\'][^>]*name=["\'](.*?)["\'][^>]*value=["\'](.*?)["\'][^>]*>/is', $formMatch[1], $matches)) {
         $hiddenFields = array_combine($matches[1], $matches[2]);
-        echo "-> Champs cachés trouvés et ajoutés : " . print_r($hiddenFields, true) . "\n<br>\n";
     }
 }
 
@@ -77,7 +76,7 @@ $postData = array_merge([
     'pass' => $infoptimum_pass,
     'action' => 'ident',
     'submit' => 'Valider'
-], $hiddenFields); // On ajoute les champs cachés
+], $hiddenFields);
 
 curl_setopt($ch, CURLOPT_URL, $loginUrl);
 curl_setopt($ch, CURLOPT_POST, true);
@@ -93,30 +92,64 @@ $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
 
 echo "Code HTTP retourné : $httpCode \n<br>\n";
 
-if (stripos($effectiveUrl, 'mon-compte.php') !== false || stripos($response, 'Déconnexion') !== false || stripos($response, 'Mes alertes') !== false) {
-    echo "-> Connexion RÉUSSIE !\n<br>\n<br>\n";
+// On teste TOUT DE SUITE si on est connecté en allant voir "mon-compte.php"
+echo "Vérification forcée de la session...\n<br>\n";
+curl_setopt($ch, CURLOPT_URL, "https://www.bourges.infoptimum.com/mon-compte.php");
+curl_setopt($ch, CURLOPT_POST, false);
+// On enlève Content-Type POST pour GET
+$getHeaders = [
+    'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language: fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Cache-Control: max-age=0',
+    'Connection: keep-alive',
+    'Referer: ' . $refererUrl,
+    'Upgrade-Insecure-Requests: 1'
+];
+curl_setopt($ch, CURLOPT_HTTPHEADER, $getHeaders);
+$accountHtml = curl_exec($ch);
+$accountHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$accountEffectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+
+if (stripos($accountHtml, 'Déconnexion') !== false || stripos($accountHtml, 'Mes alertes') !== false || stripos($accountEffectiveUrl, 'identifiez-vous') === false) {
+    echo "-> Connexion RÉUSSIE ! Le cookie de session est valide.\n<br>\n<br>\n";
 } else {
-    echo "-> ÉCHEC de la connexion.\n<br>\n";
-    if (preg_match('/<div[^>]*class=["\'][^"\']*erreur[^"\']*["\'][^>]*>(.*?)<\/div>/is', $response, $errMatch)) {
-        echo "<strong>Message d'erreur : " . htmlspecialchars(strip_tags($errMatch[1])) . "</strong><br>\n";
+    echo "-> ÉCHEC. La session n'a pas été créée avec 'pass'.\n<br>\n";
+    echo "Contenu des cookies : <br>\n<pre>" . htmlspecialchars(file_get_contents($cookieFile)) . "</pre><br>\n";
+    
+    echo "<b>TENTATIVE 2 : Avec le champ 'password' au lieu de 'pass'</b><br>\n";
+    $postData['password'] = $infoptimum_pass;
+    unset($postData['pass']);
+    
+    curl_setopt($ch, CURLOPT_URL, $loginUrl);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData)); 
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $postHeaders);
+    curl_exec($ch);
+    
+    curl_setopt($ch, CURLOPT_URL, "https://www.bourges.infoptimum.com/mon-compte.php");
+    curl_setopt($ch, CURLOPT_POST, false);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $getHeaders);
+    $accountHtml = curl_exec($ch);
+    $accountEffectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+    
+    if (stripos($accountHtml, 'Déconnexion') !== false || stripos($accountEffectiveUrl, 'identifiez-vous') === false) {
+        echo "-> Connexion RÉUSSIE avec 'password' !\n<br>\n<br>\n";
     } else {
-        // Afficher l'erreur pour voir si c'est un problème de champ (ex: "Veuillez remplir tous les champs")
-        echo "Extrait HTML (recherche erreur) : <br>\n";
-        echo htmlspecialchars(substr(strip_tags($response), 0, 500)) . "<br>\n";
+        echo "-> ÉCHEC. La session n'a toujours pas été créée.\n<br>\n";
+        die();
     }
-    die();
 }
 
 echo "3. Accès à la page de la vente privée...\n<br>\n";
 curl_setopt($ch, CURLOPT_URL, $url);
 curl_setopt($ch, CURLOPT_POST, false);
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); // On enlève le Content-Type
+curl_setopt($ch, CURLOPT_HTTPHEADER, $getHeaders); // On enlève le Content-Type POST
 $response = curl_exec($ch);
 
 echo "\n4. Recherche du bouton IMPRIMER...\n<br>\n";
 
-// AJOUT: on cherche aussi "Imprimer"
-if (preg_match_all('/<form[^>]*action=["\']([^"\']*)["\'][^>]*>(?:(?!<\/form>).)*?(Imprimez|Ajouter|Panier|Imprimer).*?<\/form>/is', $response, $matches)) {
+if (preg_match_all('/<form[^>]*action=["\']([^"\']*)["\'][^>]*>(?:(?!<\/form>).)*?(Imprimez|Ajouter|Panier).*?<\/form>/is', $response, $matches)) {
     $found = false;
     foreach ($matches[1] as $index => $actionUrl) {
         if (stripos($actionUrl, 'recherche') === false) {
@@ -133,7 +166,7 @@ if (preg_match_all('/<form[^>]*action=["\']([^"\']*)["\'][^>]*>(?:(?!<\/form>).)
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
             
-            $printHeaders = $headers;
+            $printHeaders = $getHeaders;
             $printHeaders[] = 'Content-Type: application/x-www-form-urlencoded';
             curl_setopt($ch, CURLOPT_HTTPHEADER, $printHeaders);
             
@@ -144,7 +177,7 @@ if (preg_match_all('/<form[^>]*action=["\']([^"\']*)["\'][^>]*>(?:(?!<\/form>).)
             if (stripos($printResponse, 'Le produit a été ajouté') !== false || stripos($printResponse, 'Panier') !== false || stripos($printResponse, 'Imprim') !== false || $printCode == 302 || $printCode == 200) {
                 echo "<strong>-> Impression VALIDÉE par le serveur !</strong>\n<br>\n";
             } else {
-                echo "-> Résultat incertain. Extrait de la réponse :\n<br>\n";
+                echo "-> Résultat incertain. Extrait :\n<br>\n";
                 echo htmlspecialchars(substr(strip_tags($printResponse), 0, 300)) . "\n<br>\n";
             }
             $found = true;
@@ -158,6 +191,7 @@ if (preg_match_all('/<form[^>]*action=["\']([^"\']*)["\'][^>]*>(?:(?!<\/form>).)
     $actionUrl = "https://www.bourges.infoptimum.com/" . ltrim($matches[1][0], '/');
     curl_setopt($ch, CURLOPT_URL, $actionUrl);
     curl_setopt($ch, CURLOPT_POST, false);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $getHeaders);
     $printResponse = curl_exec($ch);
     $printCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     
