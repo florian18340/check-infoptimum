@@ -25,9 +25,9 @@ class StockChecker {
         
         $this->log("Tentative de connexion à Infoptimum avec : " . $this->infoptimum_email);
         
-        $loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php";
+        $loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous2.php";
         
-        $ch = curl_init($loginUrl);
+        $ch = curl_init();
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         
@@ -36,33 +36,53 @@ class StockChecker {
         curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
         
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
+        $headers = [
+            'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language: fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Cache-Control: max-age=0',
+            'Connection: keep-alive',
+            'Origin: https://www.bourges.infoptimum.com',
+            'Referer: https://www.bourges.infoptimum.com/identifiez-vous.php',
+            'Sec-Ch-Ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
+            'Sec-Ch-Ua-Mobile: ?0',
+            'Sec-Ch-Ua-Platform: "macOS"',
+            'Sec-Fetch-Dest: document',
+            'Sec-Fetch-Mode: navigate',
+            'Sec-Fetch-Site: same-origin',
+            'Sec-Fetch-User: ?1',
+            'Upgrade-Insecure-Requests: 1',
+            'Content-Type: application/x-www-form-urlencoded'
+        ];
+        
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_POST, true);
+        
+        // On utilise 'mdp' comme découvert dans nos tests
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
             'email' => $this->infoptimum_email, 
-            'pass' => $this->infoptimum_pass, 
-            'action' => 'ident',
-            'submit' => 'Valider'
+            'mdp' => $this->infoptimum_pass
         ]));
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         curl_close($ch);
         
-        if ($httpCode == 200 && (stripos($response, 'Déconnexion') !== false || stripos($response, 'Mon compte') !== false || stripos($response, 'Mes alertes') !== false)) {
+        // Si on est redirigé vers mon-compte.php, c'est un succès garanti !
+        if (stripos($effectiveUrl, 'mon-compte.php') !== false) {
             $this->log("Connexion Infoptimum REUSSIE pour " . $this->infoptimum_email);
             return true;
         }
         
-        $this->log("Echec de la connexion Infoptimum pour " . $this->infoptimum_email . " (Code: $httpCode)");
+        $this->log("Echec de la connexion Infoptimum pour " . $this->infoptimum_email . " (URL: $effectiveUrl)");
         return false;
     }
 
     private function autoPrint($html) {
         $this->log("Tentative d'impression / ajout au panier...");
         
-        // Nouvelle regex plus large pour chercher le bouton "Imprimez votre coupon" ou "Ajouter au panier"
         if (preg_match('/<form[^>]*action=["\']([^"\']*)["\'][^>]*>.*?(Imprimez|Ajouter|Panier)/is', $html, $m)) {
             $action = $m[1];
             preg_match_all('/<input[^>]*name=["\'](.*?)["\'][^>]*value=["\'](.*?)["\'][^>]*>/is', $m[0], $inputs);
@@ -82,7 +102,14 @@ class StockChecker {
                 curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
             }
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
+            
+            $headers = [
+                'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+                'Origin: https://www.bourges.infoptimum.com',
+                'Content-Type: application/x-www-form-urlencoded'
+            ];
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            
             $response = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
@@ -93,7 +120,6 @@ class StockChecker {
                  return true;
             }
         } elseif (preg_match('/<a[^>]*href=["\']([^"\']*(?:imprime|coupon|panier)[^"\']*)["\'][^>]*>/i', $html, $m)) {
-            // Parfois l'impression est juste un lien
             $action = "https://www.bourges.infoptimum.com/" . ltrim($m[1], '/');
             $this->log("Suivi du lien d'impression : $action");
             
@@ -102,6 +128,7 @@ class StockChecker {
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36');
             curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
@@ -131,7 +158,16 @@ class StockChecker {
         curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
         curl_setopt($ch, CURLOPT_COOKIEJAR, $this->cookieFile);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
+        
+        $headers = [
+            'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language: fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection: keep-alive',
+            'Upgrade-Insecure-Requests: 1'
+        ];
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
         $html = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
