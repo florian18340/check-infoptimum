@@ -1,5 +1,4 @@
 <?php
-exit;
 date_default_timezone_set('Europe/Paris');
 if (date('N') > 6 || (int)date('H') < 8 || (int)date('H') >= 19) exit;
 
