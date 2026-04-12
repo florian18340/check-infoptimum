@@ -124,6 +124,9 @@ class ApiController {
     }
 
     private function checkAll() {
+        // Ignorer la limite de temps pour cette requête car elle peut être longue avec des "sleep"
+        set_time_limit(0);
+
         $urlModel = new MonitoredUrl($this->pdo);
         $accountModel = new InfoptimumAccount($this->pdo);
         $checker = new StockChecker();
@@ -145,10 +148,10 @@ class ApiController {
                 $checker->setCredentials($account['email'], $account['password']);
                 $newStatus = $checker->check($url['url']);
                 
-                if ($newStatus === 'available') {
-                    // Si check retourne available, StockChecker a déjà tenté l'autoPrint
-                    // On marque en base que ce compte a commandé pour cette URL
+                // On vérifie le résultat réel de l'impression
+                if ($newStatus === 'available_and_printed') {
                     $accountModel->markAsOrdered($account['id'], $url['id']);
+                    $newStatus = 'available'; // On remet au statut standard pour l'affichage
                 }
             }
 
@@ -156,6 +159,8 @@ class ApiController {
                 $emailService->sendStockNotification($notifEmail, $url['url']);
             }
             $urlModel->updateStatus($url['id'], $newStatus);
+            // On ajoute une pause d'une seconde entre chaque vérification quand c'est fait via le front
+            sleep(1);
         }
         echo json_encode(['success' => true]);
     }

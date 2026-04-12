@@ -41,21 +41,17 @@ class StockChecker {
         curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
         curl_setopt($ch, CURLOPT_POST, true);
-        // Les noms des champs POST dépendent du formulaire réel d'Infoptimum.
-        // Généralement : email/login, password/pass, et peut-être un champ caché.
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
             'email' => $this->infoptimum_email, 
             'pass' => $this->infoptimum_pass, 
             'action' => 'ident',
-            'submit' => 'Valider' // Parfois nécessaire
+            'submit' => 'Valider'
         ]));
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
         
-        // Vérification de la réussite de la connexion
-        // On cherche un élément typique de l'espace membre
         if ($httpCode == 200 && (stripos($response, 'Déconnexion') !== false || stripos($response, 'Mon compte') !== false || stripos($response, 'Mes alertes') !== false)) {
             $this->log("Connexion Infoptimum REUSSIE pour " . $this->infoptimum_email);
             return true;
@@ -111,7 +107,6 @@ class StockChecker {
         $ch = curl_init(trim($url));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        // Utiliser le cookie si on s'est connecté
         curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
         curl_setopt($ch, CURLOPT_COOKIEJAR, $this->cookieFile);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -137,7 +132,9 @@ class StockChecker {
         $this->log("Statut detecté : $status");
 
         if ($status === 'available' && $shouldPrint) {
-            $this->autoPrint($html);
+            $printSuccess = $this->autoPrint($html);
+            // On retourne un statut spécial pour dire au contrôleur que l'impression a réussi
+            if ($printSuccess) return 'available_and_printed';
         } elseif ($shouldPrint && $status !== 'available') {
             $this->log("Stock indisponible, on n'imprime pas.");
         }

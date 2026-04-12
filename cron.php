@@ -39,9 +39,20 @@ foreach ($urls as $url) {
         $checker->setCredentials($account['email'], $account['password']);
         $newStatus = $checker->check($url['url']);
         
-        if ($newStatus === 'available') {
+        if ($newStatus === 'available_and_printed') {
             $accountModel->markAsOrdered($account['id'], $url['id']);
+            $newStatus = 'available'; // Remettre à 'available' pour l'affichage
         }
+    }
+
+    $targetEmail = !empty($url['notification_email']) ? $url['notification_email'] : $url['user_email'];
+
+    if ($newStatus === 'available' && $url['last_status'] !== 'available') {
+        $emailService->sendStockNotification($targetEmail, $url['url']);
+    }
+
+    if ($newStatus === 'error' && $url['last_status'] !== 'error') {
+        $emailService->sendErrorNotification($targetEmail, $url['url']);
     }
 
     $urlModel->updateStatus($url['id'], $newStatus);
