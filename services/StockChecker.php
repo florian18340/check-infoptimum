@@ -26,6 +26,7 @@ class StockChecker {
         $this->log("Tentative de connexion à Infoptimum avec : " . $this->infoptimum_email);
         
         $loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous2.php";
+        $refererUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php";
         
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -44,27 +45,24 @@ class StockChecker {
             'Cache-Control: max-age=0',
             'Connection: keep-alive',
             'Origin: https://www.bourges.infoptimum.com',
-            'Referer: https://www.bourges.infoptimum.com/identifiez-vous.php',
-            'Sec-Ch-Ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
-            'Sec-Ch-Ua-Mobile: ?0',
-            'Sec-Ch-Ua-Platform: "macOS"',
-            'Sec-Fetch-Dest: document',
-            'Sec-Fetch-Mode: navigate',
-            'Sec-Fetch-Site: same-origin',
-            'Sec-Fetch-User: ?1',
+            'Referer: ' . $refererUrl,
             'Upgrade-Insecure-Requests: 1',
             'Content-Type: application/x-www-form-urlencoded'
         ];
         
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_POST, true);
+        
+        // CORRECTION : Utilisation des bons noms de champs 'email' et 'mdp'
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
             'email' => $this->infoptimum_email, 
-            'pass' => $this->infoptimum_pass
+            'mdp' => $this->infoptimum_pass,
+            'action' => 'ident',
+            'submit' => 'Valider'
         ]));
         
+        curl_setopt($ch, CURLOPT_URL, $loginUrl);
         $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         curl_close($ch);
         
@@ -73,7 +71,7 @@ class StockChecker {
             return true;
         }
         
-        $this->log("Echec de la connexion Infoptimum pour " . $this->infoptimum_email . " (Code: $httpCode, URL: $effectiveUrl)");
+        $this->log("Echec de la connexion Infoptimum pour " . $this->infoptimum_email . " (URL: $effectiveUrl)");
         return false;
     }
 
@@ -116,22 +114,6 @@ class StockChecker {
                  $this->log("Impression potentiellement REUSSIE !");
                  return true;
             }
-        } elseif (preg_match('/<a[^>]*href=["\']([^"\']*(?:imprime|coupon|panier)[^"\']*)["\'][^>]*>/i', $html, $m)) {
-            $action = "https://www.bourges.infoptimum.com/" . ltrim($m[1], '/');
-            $this->log("Suivi du lien d'impression : $action");
-            
-            $ch = curl_init($action);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36');
-            curl_exec($ch);
-            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
-            $this->log("Lien cliqué (Code: $code)");
-            return true;
         } else {
              $this->log("Formulaire ou lien d'impression INTROUVABLE dans le HTML.");
         }
@@ -144,7 +126,6 @@ class StockChecker {
     }
 
     public function checkOnly($url) {
-        // Vider les cookies pour être 100% sûr de faire une requête anonyme
         if (file_exists($this->cookieFile)) { @unlink($this->cookieFile); }
         return $this->performCheck($url, false);
     }
@@ -192,8 +173,6 @@ class StockChecker {
             if ($printSuccess) {
                 return 'available_and_printed';
             } else {
-                // S'il est disponible mais que l'impression échoue (pas de bouton), 
-                // c'est sûrement que ce compte a déjà commandé.
                 return 'out_of_stock_for_account'; 
             }
         } elseif ($shouldPrint && $status !== 'available') {
