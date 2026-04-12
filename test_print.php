@@ -2,7 +2,7 @@
 // Script de test désactivé par défaut.
 // Pour l'utiliser, commentez ou supprimez les deux lignes suivantes.
 http_response_code(403);
-die("Accès interdit : script de diagnostic désactivé.");
+//die("Accès interdit : script de diagnostic désactivé.");
 
 require_once 'config.php';
 
