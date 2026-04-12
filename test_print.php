@@ -6,7 +6,7 @@ $loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous2.php";
 $refererUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php";
 $cookieFile = __DIR__ . '/test_cookies.txt';
 
-echo "--- TEST D'IMPRESSION (RECHERCHE DE LIEN) ---\n<br>\n";
+echo "--- TEST D'IMPRESSION (RECHERCHE DE LIEN PRÉCISE) ---\n<br>\n";
 
 try {
     $dbHost = $host ?? 'localhost';
@@ -75,7 +75,8 @@ $venteHtml = curl_exec($ch);
 // --- ETAPE 3: Chercher le lien d'impression ---
 echo "3. Recherche du lien d'impression...\n<br>\n";
 
-if (preg_match('/<a[^>]*href=["\']([^"\']*(?:vente-privee-impression|imprimer)[^"\']*)["\'][^>]*>.*?Imprimez votre coupon.*?<\/a>/i', $venteHtml, $linkMatch)) {
+// Regex précise pour trouver le lien avec l'image "vp-imprime-coupon.png"
+if (preg_match('/<a[^>]*href=["\']([^"\']*(?:vente-privee-impression\.php\?ID=\d+)[^"\']*)["\'][^>]*>.*?vp-imprime-coupon\.png.*?<\/a>/i', $venteHtml, $linkMatch)) {
     $impressionUrl = $linkMatch[1];
     echo "-> Lien trouvé : " . htmlspecialchars($impressionUrl) . "\n<br>\n";
     
