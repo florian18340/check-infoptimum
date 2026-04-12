@@ -89,10 +89,16 @@ $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL); 
 
-if (stripos($effectiveUrl, 'mon-compte.php') !== false || stripos($response, 'Déconnexion') !== false || stripos($response, 'Mes alertes') !== false) {
-    echo "-> Connexion RÉUSSIE ! (Redirigé vers mon-compte.php)\n<br>\n<br>\n";
+// On affiche TOUT ce qu'on reçoit pour comprendre ce qui cloche
+echo "Code HTTP retourné : $httpCode \n<br>\n";
+echo "URL finale après redirection éventuelle : $effectiveUrl \n<br>\n";
+echo "Extrait de la page reçue (300 premiers caractères) : \n<br>\n";
+echo htmlspecialchars(substr(strip_tags($response), 0, 300)) . "\n<br>\n<br>\n";
+
+if (stripos($effectiveUrl, 'mon-compte.php') !== false || stripos($response, 'Déconnexion') !== false || stripos($response, 'Mes alertes') !== false || stripos($response, 'Devenir membre') === false) {
+    echo "-> Connexion potentiellement RÉUSSIE ! (Vérifions le HTML de la vente)\n<br>\n<br>\n";
 } else {
-    echo "-> ÉCHEC. Code HTTP : $httpCode. URL : $effectiveUrl\n<br>\n";
+    echo "-> ÉCHEC. La session n'a pas été créée.\n<br>\n";
     die();
 }
 
