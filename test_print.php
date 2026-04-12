@@ -2,7 +2,7 @@
 require_once 'config.php';
 
 $url = "https://www.bourges.infoptimum.com/vente-privee-8-seances-de-1h30-de-preparation-mentale-7054.html";
-$loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous2.php"; 
+$loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php"; 
 $refererUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php";
 $cookieFile = __DIR__ . '/test_cookies.txt';
 
@@ -70,11 +70,13 @@ curl_setopt($ch, CURLOPT_POST, false);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 curl_exec($ch);
 
-echo "2. POST connexion sur identifiez-vous2.php...\n<br>\n";
+echo "2. POST connexion sur identifiez-vous.php (pas vous2 !)...\n<br>\n";
 
 $postData = http_build_query([
     'email' => $infoptimum_email,
-    'pass' => $infoptimum_pass 
+    'pass' => $infoptimum_pass,
+    'action' => 'ident',
+    'submit' => 'Valider'
 ]);
 
 curl_setopt($ch, CURLOPT_URL, $loginUrl);
@@ -92,14 +94,21 @@ $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
 // On affiche TOUT ce qu'on reçoit pour comprendre ce qui cloche
 echo "Code HTTP retourné : $httpCode \n<br>\n";
 echo "URL finale après redirection éventuelle : $effectiveUrl \n<br>\n";
-echo "Extrait de la page reçue (300 premiers caractères) : \n<br>\n";
-echo htmlspecialchars(substr(strip_tags($response), 0, 300)) . "\n<br>\n<br>\n";
 
+// Si on trouve une balise <title>, c'est mieux que d'afficher 300 chars bruts
+if (preg_match('/<title>(.*?)<\/title>/is', $response, $title)) {
+     echo "Titre de la page chargée : " . htmlspecialchars(trim($title[1])) . "\n<br>\n";
+} else {
+     echo "Extrait de la page reçue (300 premiers caractères) : \n<br>\n";
+     echo htmlspecialchars(substr(strip_tags($response), 0, 300)) . "\n<br>\n<br>\n";
+}
+
+// On vérifie une connexion réussie
 if (stripos($effectiveUrl, 'mon-compte.php') !== false || stripos($response, 'Déconnexion') !== false || stripos($response, 'Mes alertes') !== false || stripos($response, 'Devenir membre') === false) {
     echo "-> Connexion potentiellement RÉUSSIE ! (Vérifions le HTML de la vente)\n<br>\n<br>\n";
 } else {
     echo "-> ÉCHEC. La session n'a pas été créée.\n<br>\n";
-    die();
+    // On ne s'arrête plus ici, on continue pour voir ce qu'affiche la vente
 }
 
 echo "3. Accès à la page de la vente privée...\n<br>\n";
