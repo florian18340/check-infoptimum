@@ -3,97 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vérificateur de Stock Infoptimum</title>
+    <title>Stock Infoptimum</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <div class="logo-container">
-            <img src="images/logo.svg" alt="Cathédrale de Bourges" class="logo">
+            <img src="images/logo.svg" alt="Logo" class="logo">
         </div>
-        <h1>Vérificateur de Stock Infoptimum</h1>
+        <h1>Vérificateur de Stock</h1>
 
-        <!-- Section de connexion -->
-        <div id="loginSection">
+        <div id="loginSection" style="display: none;">
             <h2>Connexion</h2>
             <form id="loginForm">
                 <input type="email" id="emailInput" placeholder="Email" required>
                 <input type="password" id="passwordInput" placeholder="Mot de passe" required>
                 <button type="submit">Se connecter</button>
             </form>
-            <p id="loginError" style="color: red; display: none;"></p>
-            <p style="margin-top: 15px;">
-                Pas encore de compte ? <a href="#" id="showRegisterLink">S'inscrire</a>
-            </p>
         </div>
 
-        <!-- Section d'inscription -->
-        <div id="registerSection" style="display: none; text-align: center;">
-            <h2>Inscription</h2>
-            <form id="registerForm" style="flex-direction: column;">
-                <input type="email" id="regEmailInput" placeholder="Email" required>
-                <input type="password" id="regPasswordInput" placeholder="Mot de passe" required>
-                <input type="password" id="regConfirmPasswordInput" placeholder="Confirmer le mot de passe" required>
-                <button type="submit" style="background-color: #27ae60;">Créer un compte</button>
-            </form>
-            <p id="registerError" style="color: red; display: none;"></p>
-            <p style="margin-top: 15px;">
-                Déjà un compte ? <a href="#" id="showLoginLink">Se connecter</a>
-            </p>
-        </div>
-
-        <!-- Section principale (cachée par défaut) -->
         <div id="mainSection" style="display: none;">
             <div class="header-actions">
-                <button id="settingsBtn" class="secondary-btn" style="margin-right: 10px;">Paramètres</button>
+                <button id="settingsBtn" class="secondary-btn">Paramètres</button>
                 <button id="logoutBtn" class="secondary-btn">Déconnexion</button>
             </div>
 
-            <div id="settingsPanel" style="display: none; background: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                <h3>Paramètres de notification</h3>
+            <div id="settingsPanel" style="display: none; border: 1px solid #ddd; padding: 15px; margin-bottom: 20px;">
+                <h3>Email de notification</h3>
                 <form id="notificationEmailForm">
-                    <label for="notifEmailInput">Email pour les alertes :</label>
-                    <input type="email" id="notifEmailInput" placeholder="votre@email.com" required>
+                    <input type="email" id="notifEmailInput" placeholder="Email pour les alertes" required>
                     <button type="submit">Enregistrer</button>
                 </form>
-                <p id="settingsMessage" style="display: none; margin-top: 5px;"></p>
+                <hr>
+                <h3>Gestion des comptes Infoptimum</h3>
+                <form id="addAccountForm">
+                    <input type="email" id="accEmail" placeholder="Email Compte" required>
+                    <input type="password" id="accPass" placeholder="Mot de passe" required>
+                    <button type="submit">Ajouter Compte</button>
+                </form>
+                <table id="accountsTable" style="width: 100%; margin-top: 10px;">
+                    <thead><tr><th>Email</th><th>Action</th></tr></thead>
+                    <tbody></tbody>
+                </table>
             </div>
 
             <div class="add-url-section">
-                <h2>Ajouter une vente privée à surveiller</h2>
+                <h2>Ventes à surveiller</h2>
                 <form id="addUrlForm">
-                    <input type="url" id="urlInput" placeholder="https://www.bourges.infoptimum.com/..." required>
+                    <input type="url" id="urlInput" placeholder="URL Infoptimum" required>
                     <button type="submit">Ajouter</button>
                 </form>
             </div>
 
             <div class="list-section">
-                <h2>Ventes surveillées</h2>
-                <div class="controls">
-                    <button id="checkAllBtn">Vérifier tout le stock maintenant</button>
-                    <label>
-                        <input type="checkbox" id="autoCheckToggle"> Vérification automatique (toutes les 5 min)
-                    </label>
-                </div>
-                <div id="results">
-                    <table id="stockTable">
-                        <thead>
-                            <tr>
-                                <th>URL</th>
-                                <th>État</th>
-                                <th>Dernière vérification</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Lignes générées par JS -->
-                        </tbody>
-                    </table>
-                </div>
+                <button id="checkAllBtn">Vérifier maintenant</button>
+                <table id="stockTable">
+                    <thead><tr><th>URL</th><th>État</th><th>Dernière vérification</th><th>Action</th></tr></thead>
+                    <tbody></tbody>
+                </table>
             </div>
         </div>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>

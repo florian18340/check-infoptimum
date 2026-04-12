@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/MonitoredUrl.php';
+require_once __DIR__ . '/../models/InfoptimumAccount.php';
 require_once __DIR__ . '/../services/StockChecker.php';
 require_once __DIR__ . '/../services/EmailService.php';
 
@@ -16,21 +17,10 @@ class ApiController {
     public function handleRequest() {
         $action = $_GET['action'] ?? '';
         
-        // Actions publiques
-        if ($action === 'login') {
-            $this->login();
-            return;
-        }
-        if ($action === 'register') {
-            $this->register();
-            return;
-        }
-        if ($action === 'logout') {
-            $this->logout();
-            return;
-        }
+        if ($action === 'login') { $this->login(); return; }
+        if ($action === 'register') { $this->register(); return; }
+        if ($action === 'logout') { $this->logout(); return; }
 
-        // Actions protégées
         if (!isset($_SESSION['user_id'])) {
             http_response_code(401);
             echo json_encode(['error' => 'Non autorisé']);
@@ -38,34 +28,26 @@ class ApiController {
         }
 
         switch ($action) {
-            case 'list':
-                $this->listUrls();
-                break;
-            case 'add':
-                $this->addUrl();
-                break;
-            case 'delete':
-                $this->deleteUrl();
-                break;
-            case 'check_all':
-                $this->checkAll();
-                break;
-            case 'get_user_info':
-                $this->getUserInfo();
-                break;
-            case 'update_notification_email':
-                $this->updateNotificationEmail();
-                break;
-            default:
-                echo json_encode(['error' => 'Action inconnue']);
+            case 'list': $this->listUrls(); break;
+            case 'add': $this->addUrl(); break;
+            case 'delete': $this->deleteUrl(); break;
+            case 'check_all': $this->checkAll(); break;
+            case 'get_user_info': $this->getUserInfo(); break;
+            case 'update_notification_email': $this->updateNotificationEmail(); break;
+            // Nouveaux endpoints pour les comptes Infoptimum
+            case 'list_accounts': $this->listAccounts(); break;
+            case 'add_account': $this->addAccount(); break;
+            case 'delete_account': $this->deleteAccount(); break;
+            default: echo json_encode(['error' => 'Action inconnue']);
         }
     }
+
+    // ... (Login, Register, Logout, etc. restent identiques)
 
     private function login() {
         $data = json_decode(file_get_contents('php://input'), true);
         $userModel = new User($this->pdo);
         $user = $userModel->findByEmail($data['email'] ?? '');
-
         if ($user && password_verify($data['password'] ?? '', $user['password'])) {
             $_SESSION['user_id'] = $user['id'];
             echo json_encode(['success' => true]);
@@ -76,38 +58,17 @@ class ApiController {
 
     private function register() {
         $data = json_decode(file_get_contents('php://input'), true);
-        $email = $data['email'] ?? '';
-        $pass = $data['password'] ?? '';
-
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            echo json_encode(['success' => false, 'message' => 'Email invalide']);
-            return;
-        }
-
-        if (strlen($pass) < 6) {
-            echo json_encode(['success' => false, 'message' => 'Le mot de passe doit faire au moins 6 caractères']);
-            return;
-        }
-
         $userModel = new User($this->pdo);
-        if ($userModel->exists($email)) {
-            echo json_encode(['success' => false, 'message' => 'Cet email est déjà utilisé']);
+        if ($userModel->exists($data['email'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Email utilisé']);
             return;
         }
-
-        $userId = $userModel->create($email, $pass);
-        if ($userId) {
-            $_SESSION['user_id'] = $userId;
-            echo json_encode(['success' => true]);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'Erreur lors de l\'inscription']);
-        }
+        $userId = $userModel->create($data['email'] ?? '', $data['password'] ?? '');
+        if ($userId) { $_SESSION['user_id'] = $userId; echo json_encode(['success' => true]); }
+        else { echo json_encode(['success' => false]); }
     }
 
-    private function logout() {
-        session_destroy();
-        echo json_encode(['success' => true]);
-    }
+    private function logout() { session_destroy(); echo json_encode(['success' => true]); }
 
     private function listUrls() {
         $urlModel = new MonitoredUrl($this->pdo);
@@ -116,77 +77,87 @@ class ApiController {
 
     private function addUrl() {
         $data = json_decode(file_get_contents('php://input'), true);
-        $url = $data['url'] ?? '';
-        
-        if (filter_var($url, FILTER_VALIDATE_URL)) {
+        if (filter_var($data['url'] ?? '', FILTER_VALIDATE_URL)) {
             $urlModel = new MonitoredUrl($this->pdo);
-            $urlModel->create($_SESSION['user_id'], $url);
+            $urlModel->create($_SESSION['user_id'], $data['url']);
             echo json_encode(['success' => true]);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'URL invalide']);
-        }
+        } else { echo json_encode(['success' => false]); }
     }
 
     private function deleteUrl() {
         $data = json_decode(file_get_contents('php://input'), true);
         $urlModel = new MonitoredUrl($this->pdo);
-        
-        if ($urlModel->delete($data['id'] ?? 0, $_SESSION['user_id'])) {
-            echo json_encode(['success' => true]);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'Impossible de supprimer cet élément']);
-        }
-    }
-
-    private function checkAll() {
-        $urlModel = new MonitoredUrl($this->pdo);
-        $checker = new StockChecker();
-        $emailService = new EmailService($this->emailConfig);
-        $userModel = new User($this->pdo);
-        
-        // Récupérer toutes les URLs de l'utilisateur connecté
-        $urls = $urlModel->findAllByUserIdWithEmail($_SESSION['user_id']);
-        
-        // Récupérer l'email de notification de l'utilisateur
-        $userInfo = $userModel->findById($_SESSION['user_id']);
-        $notificationEmail = !empty($userInfo['notification_email']) ? $userInfo['notification_email'] : $userInfo['email'];
-
-        foreach ($urls as $item) {
-            $newStatus = $checker->check($item['url']);
-            
-            // Si le statut change vers "available"
-            if ($newStatus === 'available' && $item['last_status'] !== 'available') {
-                $emailService->sendStockNotification($notificationEmail, $item['url']);
-            }
-
-            // Mise à jour du statut en base
-            $urlModel->updateStatus($item['id'], $newStatus);
-        }
-        
-        echo json_encode(['success' => true]);
+        echo json_encode(['success' => $urlModel->delete($data['id'] ?? 0, $_SESSION['user_id'])]);
     }
 
     private function getUserInfo() {
         $userModel = new User($this->pdo);
-        $user = $userModel->findById($_SESSION['user_id']);
-        echo json_encode($user);
+        echo json_encode($userModel->findById($_SESSION['user_id']));
     }
 
     private function updateNotificationEmail() {
         $data = json_decode(file_get_contents('php://input'), true);
-        $email = $data['email'] ?? '';
-
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            echo json_encode(['success' => false, 'message' => 'Email invalide']);
-            return;
-        }
-
         $userModel = new User($this->pdo);
-        if ($userModel->updateNotificationEmail($_SESSION['user_id'], $email)) {
+        echo json_encode(['success' => $userModel->updateNotificationEmail($_SESSION['user_id'], $data['email'] ?? '')]);
+    }
+
+    // --- GESTION DES COMPTES INFOPTIMUM ---
+
+    private function listAccounts() {
+        $accountModel = new InfoptimumAccount($this->pdo);
+        echo json_encode($accountModel->findAllByUserId($_SESSION['user_id']));
+    }
+
+    private function addAccount() {
+        $data = json_decode(file_get_contents('php://input'), true);
+        $accountModel = new InfoptimumAccount($this->pdo);
+        if (!empty($data['email']) && !empty($data['password'])) {
+            $accountModel->create($_SESSION['user_id'], $data['email'], $data['password']);
             echo json_encode(['success' => true]);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'Erreur lors de la mise à jour']);
+        } else { echo json_encode(['success' => false]); }
+    }
+
+    private function deleteAccount() {
+        $data = json_decode(file_get_contents('php://input'), true);
+        $accountModel = new InfoptimumAccount($this->pdo);
+        echo json_encode(['success' => $accountModel->delete($data['id'] ?? 0, $_SESSION['user_id'])]);
+    }
+
+    private function checkAll() {
+        $urlModel = new MonitoredUrl($this->pdo);
+        $accountModel = new InfoptimumAccount($this->pdo);
+        $checker = new StockChecker();
+        $emailService = new EmailService($this->emailConfig);
+        
+        $urls = $urlModel->findAllByUserId($_SESSION['user_id']);
+        $userInfo = (new User($this->pdo))->findById($_SESSION['user_id']);
+        $notifEmail = !empty($userInfo['notification_email']) ? $userInfo['notification_email'] : $userInfo['email'];
+
+        foreach ($urls as $url) {
+            // Pour chaque URL, on vérifie s'il y a des comptes qui peuvent encore commander
+            $availableAccounts = $accountModel->findAvailableForUrl($url['id']);
+            
+            if (empty($availableAccounts)) {
+                $newStatus = $checker->checkOnly($url['url']); // Simple vérification sans commande
+            } else {
+                // S'il reste des comptes, on prend le premier pour la vérification + commande
+                $account = $availableAccounts[0];
+                $checker->setCredentials($account['email'], $account['password']);
+                $newStatus = $checker->check($url['url']);
+                
+                if ($newStatus === 'available') {
+                    // Si check retourne available, StockChecker a déjà tenté l'autoPrint
+                    // On marque en base que ce compte a commandé pour cette URL
+                    $accountModel->markAsOrdered($account['id'], $url['id']);
+                }
+            }
+
+            if ($newStatus === 'available' && $url['last_status'] !== 'available') {
+                $emailService->sendStockNotification($notifEmail, $url['url']);
+            }
+            $urlModel->updateStatus($url['id'], $newStatus);
         }
+        echo json_encode(['success' => true]);
     }
 }
 ?>

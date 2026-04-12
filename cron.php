@@ -1,94 +1,50 @@
 <?php
-/**
- * Script à exécuter via une tâche CRON (ex: toutes les 5 minutes)
- * Commande : php /chemin/vers/check-infoptimum/cron.php
- */
-
-// --- RÉGULATION DU CRON ---
-// Fuseau horaire pour être sûr du calcul de l'heure
 date_default_timezone_set('Europe/Paris');
+if (date('N') > 6 || (int)date('H') < 8 || (int)date('H') >= 19) exit;
 
-$currentDay = date('N'); // 1 (lundi) à 7 (dimanche)
-$currentHour = (int)date('H'); // 0 à 23
-
-// Vérifier si nous sommes entre lundi (1) et samedi (6)
-if ($currentDay > 6) {
-    echo "[" . date('Y-m-d H:i:s') . "] CRON suspendu : nous sommes dimanche.\n";
-    exit;
-}
-
-// Vérifier si l'heure est comprise entre 08:00 et 19:00 (inclus)
-if ($currentHour < 8 || $currentHour >= 19) {
-    echo "[" . date('Y-m-d H:i:s') . "] CRON suspendu : hors des horaires d'ouverture (08h-19h).\n";
-    exit;
-}
-
-// --- INITIALISATION ---
-$dir = __DIR__;
-$configFile = $dir . '/config.php';
-
-if (!file_exists($configFile)) {
-    die("Erreur : Le fichier de configuration 'config.php' est manquant.\n");
-}
-
-require_once $configFile;
-require_once $dir . '/models/MonitoredUrl.php';
-require_once $dir . '/models/User.php';
-require_once $dir . '/services/StockChecker.php';
-require_once $dir . '/services/EmailService.php';
-
-$dbHost = $host ?? 'localhost';
-$dbName = $dbname ?? 'infoptimum_stock';
-$dbUser = $username ?? 'root';
-$dbPass = $password ?? '';
+require_once 'config.php';
+require_once 'models/MonitoredUrl.php';
+require_once 'models/User.php';
+require_once 'models/InfoptimumAccount.php';
+require_once 'services/StockChecker.php';
+require_once 'services/EmailService.php';
 
 try {
-    $pdo = new PDO("mysql:host=$dbHost;dbname=$dbName;charset=utf8", $dbUser, $dbPass);
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    die("Erreur de connexion DB : " . $e->getMessage() . "\n");
-}
+} catch (PDOException $e) { die("DB Error"); }
 
-$emailConfig = [
+$urlModel = new MonitoredUrl($pdo);
+$accountModel = new InfoptimumAccount($pdo);
+$checker = new StockChecker();
+$emailService = new EmailService([
     'smtp_host' => $smtp_host ?? '',
     'smtp_port' => $smtp_port ?? 587,
     'smtp_user' => $smtp_user ?? '',
     'smtp_pass' => $smtp_pass ?? '',
     'smtp_from' => $smtp_from ?? 'no-reply@check-infoptimum.local',
     'smtp_secure' => $smtp_secure ?? 'tls'
-];
+]);
 
-$urlModel = new MonitoredUrl($pdo);
-$checker = new StockChecker();
-$emailService = new EmailService($emailConfig);
-
-$stmt = $pdo->query("SELECT m.*, u.email, u.notification_email FROM monitored_urls m JOIN users u ON m.user_id = u.id");
+$stmt = $pdo->query("SELECT m.*, u.email as user_email, u.notification_email FROM monitored_urls m JOIN users u ON m.user_id = u.id");
 $urls = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-echo "[" . date('Y-m-d H:i:s') . "] Début de la vérification (" . count($urls) . " URLs)...\n";
-
-foreach ($urls as $item) {
-    echo "Vérification de : " . $item['url'] . "... ";
-    $newStatus = $checker->check($item['url']);
-    echo "Statut : $newStatus\n";
+foreach ($urls as $url) {
+    $availableAccounts = $accountModel->findAvailableForUrl($url['id']);
     
-    $targetEmail = !empty($item['notification_email']) ? $item['notification_email'] : $item['email'];
-
-    if ($newStatus === 'available' && $item['last_status'] !== 'available') {
-        echo " -> ENVOI EMAIL STOCK à " . $targetEmail . "\n";
-        $emailService->sendStockNotification($targetEmail, $item['url']);
+    if (empty($availableAccounts)) {
+        $newStatus = $checker->checkOnly($url['url']);
+    } else {
+        $account = $availableAccounts[0];
+        $checker->setCredentials($account['email'], $account['password']);
+        $newStatus = $checker->check($url['url']);
+        
+        if ($newStatus === 'available') {
+            $accountModel->markAsOrdered($account['id'], $url['id']);
+        }
     }
 
-    if ($newStatus === 'error' && $item['last_status'] !== 'error') {
-        echo " -> ENVOI EMAIL ERREUR à " . $targetEmail . "\n";
-        $emailService->sendErrorNotification($targetEmail, $item['url']);
-    }
-
-    $urlModel->updateStatus($item['id'], $newStatus);
-    
-    // Ajout d'une petite pause entre chaque URL pour être plus discret (2 à 5 secondes)
+    $urlModel->updateStatus($url['id'], $newStatus);
     sleep(rand(2, 5));
 }
-
-echo "Fin de la vérification.\n";
 ?>

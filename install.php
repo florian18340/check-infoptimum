@@ -1,64 +1,88 @@
 <?php
-// Script d'installation de la base de données
-// À exécuter une fois pour initialiser ou mettre à jour la structure de la base de données.
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
 require_once 'config.php';
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    echo "Connexion à la base de données réussie.\n";
+    echo "<h3>Connexion à la base de données réussie.</h3>";
 } catch (PDOException $e) {
-    die("Erreur de connexion : " . $e->getMessage() . "\nAssurez-vous que la base de données '$dbname' existe.\n");
+    die("<h3 style='color:red;'>Erreur de connexion : " . $e->getMessage() . "</h3>");
+}
+
+function executeQuery($pdo, $sql, $description) {
+    try {
+        $pdo->exec($sql);
+        echo "<p style='color:green;'>SUCCESS : $description</p>";
+    } catch (PDOException $e) {
+        echo "<p style='color:red;'>ERROR : $description<br>Détail : " . $e->getMessage() . "</p>";
+    }
 }
 
 // 1. Table users
-echo "Vérification de la table 'users'...\n";
-$pdo->exec("CREATE TABLE IF NOT EXISTS users (
+executeQuery($pdo, "CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     notification_email VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)");
-
-// Migration : notification_email (si la table existait déjà sans cette colonne)
-try {
-    $pdo->exec("ALTER TABLE users ADD COLUMN notification_email VARCHAR(255) NULL");
-    echo " -> Colonne 'notification_email' ajoutée.\n";
-} catch (PDOException $e) {
-    // La colonne existe probablement déjà
-}
+)", "Création table 'users'");
 
 // 2. Table monitored_urls
-echo "Vérification de la table 'monitored_urls'...\n";
-$pdo->exec("CREATE TABLE IF NOT EXISTS monitored_urls (
+executeQuery($pdo, "CREATE TABLE IF NOT EXISTS monitored_urls (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     url VARCHAR(255) NOT NULL,
     last_status ENUM('available', 'out_of_stock', 'error', 'unknown') DEFAULT 'unknown',
     last_check TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-)");
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)", "Création table 'monitored_urls'");
 
-// Migration : user_id (si la table existait déjà sans cette colonne)
+// 3. Table infoptimum_accounts
+executeQuery($pdo, "CREATE TABLE IF NOT EXISTS infoptimum_accounts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)", "Création table 'infoptimum_accounts'");
+
+// 4. Table order_history
+executeQuery($pdo, "CREATE TABLE IF NOT EXISTS order_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    account_id INT NOT NULL,
+    url_id INT NOT NULL,
+    ordered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status ENUM('success', 'failed') DEFAULT 'success',
+    UNIQUE KEY unique_order (account_id, url_id)
+)", "Création table 'order_history'");
+
+// Migrations de colonnes
+echo "<h4>Vérification des migrations...</h4>";
+executeQuery($pdo, "ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email VARCHAR(255) NULL", "Migration 'notification_email'");
+executeQuery($pdo, "ALTER TABLE monitored_urls ADD COLUMN IF NOT EXISTS user_id INT NOT NULL DEFAULT 1", "Migration 'user_id'");
+
+// Ajout des clés étrangères (séparé pour éviter les erreurs si elles existent déjà)
+echo "<h4>Vérification des clés étrangères...</h4>";
 try {
-    $pdo->exec("ALTER TABLE monitored_urls ADD COLUMN user_id INT NOT NULL DEFAULT 1");
-    echo " -> Colonne 'user_id' ajoutée.\n";
-} catch (PDOException $e) {
-    // La colonne existe probablement déjà
-}
+    $pdo->exec("ALTER TABLE monitored_urls ADD CONSTRAINT fk_url_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE");
+    echo "<p style='color:green;'>Clé étrangère fk_url_user ajoutée.</p>";
+} catch (Exception $e) { echo "<p>Clé fk_url_user déjà présente ou ignorée.</p>"; }
 
-// 3. Utilisateur par défaut
+try {
+    $pdo->exec("ALTER TABLE infoptimum_accounts ADD CONSTRAINT fk_acc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE");
+    echo "<p style='color:green;'>Clé étrangère fk_acc_user ajoutée.</p>";
+} catch (Exception $e) { echo "<p>Clé fk_acc_user déjà présente ou ignorée.</p>"; }
+
+// Utilisateur par défaut
 $stmt = $pdo->query("SELECT COUNT(*) FROM users");
 if ($stmt->fetchColumn() == 0) {
-    $defaultEmail = 'admin@example.com';
-    $defaultPass = password_hash('admin123', PASSWORD_DEFAULT);
-    $stmt = $pdo->prepare("INSERT INTO users (email, password) VALUES (?, ?)");
-    $stmt->execute([$defaultEmail, $defaultPass]);
-    echo "Utilisateur par défaut créé (admin@example.com / admin123).\n";
+    $pdo->prepare("INSERT INTO users (email, password) VALUES (?, ?)")->execute(['admin@example.com', password_hash('admin123', PASSWORD_DEFAULT)]);
+    echo "<p>Utilisateur admin par défaut créé.</p>";
 }
 
-echo "Installation / Mise à jour terminée avec succès.\n";
+echo "<h3>Installation terminée.</h3>";
 ?>
