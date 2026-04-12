@@ -5,7 +5,7 @@ $url = "https://www.bourges.infoptimum.com/vente-privee-spray-nettoyant-17ml-rec
 $loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php";
 $cookieFile = __DIR__ . '/test_cookies.txt';
 
-echo "--- TEST D'IMPRESSION (COMPTE REEL) ---\n";
+echo "--- TEST D'IMPRESSION (COMPTE REEL - DEBUG NOMS CHAMPS) ---\n";
 
 try {
     $dbHost = $host ?? 'localhost';
@@ -50,65 +50,75 @@ curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
 // -------------------------------------------------------------------------
-// ETAPE 1 : RECUPERER LES CHAMPS EXACTS DU FORMULAIRE DE CONNEXION
+// ETAPE 1 : GET SUR LA PAGE DE CONNEXION
 // -------------------------------------------------------------------------
 echo "1. GET identifiez-vous.php...\n";
 curl_setopt($ch, CURLOPT_URL, $loginUrl);
 curl_setopt($ch, CURLOPT_POST, false);
 $loginPageHtml = curl_exec($ch);
 
-$postData = [
-    'email' => $infoptimum_email,
-    'pass' => $infoptimum_pass,
-    'action' => 'ident', // action par défaut sur beaucoup de vieux scripts
-    'valider' => 'Me connecter', // On essaie un submit classique
-];
-
-// Si on trouve un formulaire avec un name="action" spécifique, on l'ajoute
-if (preg_match('/<form[^>]*id=["\']form_identification["\'][^>]*>/is', $loginPageHtml, $formMatch)) {
-    echo "Formulaire de connexion trouvé.\n";
-    if (preg_match_all('/<input[^>]*type=["\']hidden["\'][^>]*name=["\'](.*?)["\'][^>]*value=["\'](.*?)["\'][^>]*>/is', $loginPageHtml, $matches)) {
-        $hiddenFields = array_combine($matches[1], $matches[2]);
-        echo "Champs cachés ajoutés : " . print_r($hiddenFields, true) . "\n";
-        $postData = array_merge($postData, $hiddenFields);
-    }
+// Chercher les formulaires cachés
+$hiddenFields = [];
+if (preg_match_all('/<input[^>]*type=["\']hidden["\'][^>]*name=["\'](.*?)["\'][^>]*value=["\'](.*?)["\'][^>]*>/is', $loginPageHtml, $matches)) {
+    $hiddenFields = array_combine($matches[1], $matches[2]);
+    echo "Champs cachés ajoutés : " . print_r($hiddenFields, true) . "\n";
 }
 
 // -------------------------------------------------------------------------
-// ETAPE 2 : POST POUR SE CONNECTER AVEC MULTIPART (souvent requis pour éviter les 403)
+// ETAPE 2 : POST POUR SE CONNECTER
 // -------------------------------------------------------------------------
 echo "2. POST connexion avec : $infoptimum_email\n";
 
 $postHeaders = $headers;
 $postHeaders[] = 'Referer: ' . $loginUrl;
 $postHeaders[] = 'Origin: https://www.bourges.infoptimum.com';
+$postHeaders[] = 'Content-Type: application/x-www-form-urlencoded';
+
+// Sur de nombreux CMS, le champ email est parfois "login" et "pass" est parfois "password" ou "pwd"
+// Je tente les noms les plus probables d'après votre erreur.
+$postData = array_merge($hiddenFields, [
+    'email' => $infoptimum_email,
+    'login' => $infoptimum_email, // Si c'est 'login' et non 'email'
+    'password' => $infoptimum_pass, // Si c'est 'password' et non 'pass'
+    'pass' => $infoptimum_pass,
+    'action' => 'ident', 
+    'valider' => 'Me connecter', 
+]);
 
 curl_setopt($ch, CURLOPT_URL, $loginUrl);
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $postHeaders);
-
-// Astuce : Certains WAF bloquent "application/x-www-form-urlencoded" fait par curl. 
-// Passer un tableau à CURLOPT_POSTFIELDS force cURL à utiliser "multipart/form-data" qui passe souvent mieux.
-curl_setopt($ch, CURLOPT_POSTFIELDS, $postData); 
+curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData)); 
 
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-if ($httpCode == 200 && (stripos($response, 'Déconnexion') !== false || stripos($response, 'Mon compte') !== false || stripos($response, 'Mes alertes') !== false)) {
-    echo "-> Connexion RÉUSSIE !\n\n";
+if ($httpCode == 200) {
+    if (stripos($response, 'Déconnexion') !== false || stripos($response, 'Mon compte') !== false || stripos($response, 'Mes alertes') !== false || stripos($response, 'Espace membre') !== false) {
+        echo "-> Connexion RÉUSSIE !\n\n";
+    } else {
+        echo "-> ÉCHEC de la connexion. Le code HTTP est 200, mais pas de trace de session.\n";
+        
+        echo "\n--- RECHERCHE DU FORMULAIRE DE LOGIN DANS LA PAGE INITIALE ---\n";
+        if (preg_match('/<form[^>]*action=["\'](?:[^"\']*identifiez-vous[^"\']*)["\'][^>]*>(.*?)<\/form>/is', $loginPageHtml, $formMatch)) {
+             preg_match_all('/<input[^>]*name=["\'](.*?)["\'][^>]*>/is', $formMatch[1], $inputs);
+             echo "Les noms des champs attendus par le serveur sont : \n";
+             print_r($inputs[1]);
+        } else {
+             echo "Impossible de trouver la structure du formulaire de connexion.\n";
+        }
+        die();
+    }
 } else {
     echo "-> ÉCHEC de la connexion (Code $httpCode).\n";
-    if (stripos($response, 'Access Forbidden') !== false) {
-         echo "ERREUR 403 DÉTECTÉE.\n";
-    }
     die();
 }
 
-// ... Suite du script 
+// ... Suite du script
 echo "3. Accès à la page de la vente privée...\n";
 curl_setopt($ch, CURLOPT_URL, $url);
 curl_setopt($ch, CURLOPT_POST, false);
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers); // Retour aux headers normaux
+curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
@@ -126,7 +136,7 @@ if (preg_match_all('/<form[^>]*action=["\']([^"\']*)["\'][^>]*>.*?(Imprimez|Ajou
     echo "5. Simulation du clic sur Imprimer...\n";
     curl_setopt($ch, CURLOPT_URL, $matches[1][0]);
     curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data)); // Le submit de base marche bien en form-urlencoded
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
     
     $printResponse = curl_exec($ch);
     $printCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
