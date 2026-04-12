@@ -2,13 +2,12 @@
 $loginUrl = "https://www.bourges.infoptimum.com/identifiez-vous.php";
 
 echo "<pre>";
-echo "--- TEST DE PROXY WEBSHARE ---\n\n";
+echo "--- TEST DE PROXY WEBSHARE (PORT 80) ---\n\n";
 
-// Remplacez par les vraies infos de Webshare.io
 $proxy_host = 'p.webshare.io'; 
-$proxy_port = '9999';          
-$proxy_user = 'uoyujbsn-rotate'; // J'ajoute '-rotate' pour tester l'IP tournante si Webshare le supporte, sinon on l'enlèvera
-$proxy_pass = 'jtprxdma17l9';
+$proxy_port = '80'; // Changement du port (9999 est souvent bloqué par les hébergeurs web)
+$proxy_user = 'uoyujbsn'; // Sans le -rotate pour tester la connexion basique d'abord
+$proxy_pass = 'jtprxdma17l9'; 
 
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $loginUrl);
@@ -29,7 +28,7 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, [
     'Upgrade-Insecure-Requests: 1'
 ]);
 
-echo "Tentative de connexion à Infoptimum via le proxy...\n";
+echo "Tentative de connexion à Infoptimum via le proxy (Port $proxy_port)...\n";
 
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -47,6 +46,8 @@ if ($httpCode == 200 && !empty($response)) {
     if (preg_match('/<title>(.*?)<\/title>/is', $response, $title)) {
         echo "Titre de la page chargée : " . htmlspecialchars(trim($title[1])) . "\n";
     }
+} elseif ($httpCode == 407) {
+    echo "ERREUR 407 : Authentification Proxy requise. Les identifiants Webshare sont incorrects.\n";
 } else {
     echo "ÉCHEC. Le proxy n'a pas résolu le problème ou est mal configuré.\n";
     echo "Extrait de la réponse : \n" . htmlspecialchars(substr($response, 0, 500));
