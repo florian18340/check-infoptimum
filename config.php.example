@@ -13,8 +13,11 @@ $smtp_pass = 'votre_mot_de_passe';
 $smtp_from = 'no-reply@check-infoptimum.local';
 $smtp_secure = 'tls';
 
-// --- IDENTIFIANTS RÉELS DU SITE INFOPTIMUM ---
-// Nécessaire pour l'impression automatique
-$infoptimum_email = 'votre_compte@infoptimum.com';
-$infoptimum_pass = 'votre_mot_de_passe_infoptimum';
+// --- Configuration du Proxy (Optionnel) ---
+// Laisser les valeurs vides pour ne pas utiliser de proxy.
+// Remplir pour que toutes les requêtes passent par le proxy.
+$proxy_host = ''; // Ex: p.webshare.io
+$proxy_port = ''; // Ex: 80 ou 9999
+$proxy_user = ''; // Ex: VotreUsername-rotate
+$proxy_pass = ''; // Votre mot de passe Webshare
 ?>

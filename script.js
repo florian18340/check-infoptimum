@@ -11,11 +11,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const addUrlForm = document.getElementById('addUrlForm');
     const checkAllBtn = document.getElementById('checkAllBtn');
     const notificationEmailForm = document.getElementById('notificationEmailForm');
-    const addAccountForm = document.getElementById('addAccountForm');
 
     // Corps de tableaux
     const tableBody = document.querySelector('#stockTable tbody');
-    const accountsTableBody = document.querySelector('#accountsTable tbody');
 
     console.log("Initialisation du script...");
 
@@ -48,11 +46,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (loginSection) loginSection.style.display = 'none';
         if (mainSection) mainSection.style.display = 'block';
         loadUrls();
-        loadAccounts();
         loadUserInfo();
     }
 
-    // --- GESTION DES URLS ---
+    // --- Gestion des URLs ---
     function loadUrls() {
         fetch('api.php?action=list')
             .then(r => r.json())
@@ -93,43 +90,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 body: JSON.stringify({url: input.value})
             }).then(() => { loadUrls(); e.target.reset(); });
-        };
-    }
-
-    // --- GESTION DES COMPTES ---
-    function loadAccounts() {
-        fetch('api.php?action=list_accounts')
-            .then(r => r.json())
-            .then(data => {
-                if (!accountsTableBody) return;
-                if (!data || !Array.isArray(data)) return;
-                accountsTableBody.innerHTML = data.map(acc => `
-                    <tr>
-                        <td>${acc.email}</td>
-                        <td><button onclick="deleteAccount(${acc.id})">Supprimer</button></td>
-                    </tr>
-                `).join('');
-            });
-    }
-
-    window.deleteAccount = (id) => {
-        if(confirm('Supprimer ce compte Infoptimum ?')) {
-            fetch('api.php?action=delete_account', {
-                method: 'POST',
-                body: JSON.stringify({id})
-            }).then(() => loadAccounts());
-        }
-    }
-
-    if (addAccountForm) {
-        addAccountForm.onsubmit = (e) => {
-            e.preventDefault();
-            const email = document.getElementById('accEmail').value;
-            const pass = document.getElementById('accPass').value;
-            fetch('api.php?action=add_account', {
-                method: 'POST',
-                body: JSON.stringify({email, password: pass})
-            }).then(() => { loadAccounts(); e.target.reset(); });
         };
     }
 

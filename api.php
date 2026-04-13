@@ -16,6 +16,14 @@ try {
     die(json_encode(['error' => 'Erreur de connexion à la base de données: ' . $e->getMessage()]));
 }
 
+// Configuration du Proxy
+$proxyConfig = [
+    'host' => $proxy_host ?? '',
+    'port' => $proxy_port ?? '',
+    'user' => $proxy_user ?? '',
+    'pass' => $proxy_pass ?? '',
+];
+
 // Configuration pour le service d'email
 $emailConfig = [
     'smtp_host' => $smtp_host ?? '',
@@ -27,6 +35,6 @@ $emailConfig = [
 ];
 
 // Initialisation du contrôleur
-$controller = new ApiController($pdo, $emailConfig);
+$controller = new ApiController($pdo, $emailConfig, $proxyConfig);
 $controller->handleRequest();
 ?>

@@ -1,7 +1,4 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 require_once 'config.php';
 
 try {
@@ -20,6 +17,10 @@ function executeQuery($pdo, $sql, $description) {
         echo "<p style='color:red;'>ERROR : $description<br>Détail : " . $e->getMessage() . "</p>";
     }
 }
+
+// Suppression des tables inutiles
+executeQuery($pdo, "DROP TABLE IF EXISTS order_history", "Suppression table 'order_history'");
+executeQuery($pdo, "DROP TABLE IF EXISTS infoptimum_accounts", "Suppression table 'infoptimum_accounts'");
 
 // 1. Table users
 executeQuery($pdo, "CREATE TABLE IF NOT EXISTS users (
@@ -40,42 +41,17 @@ executeQuery($pdo, "CREATE TABLE IF NOT EXISTS monitored_urls (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )", "Création table 'monitored_urls'");
 
-// 3. Table infoptimum_accounts
-executeQuery($pdo, "CREATE TABLE IF NOT EXISTS infoptimum_accounts (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    email VARCHAR(255) NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)", "Création table 'infoptimum_accounts'");
-
-// 4. Table order_history
-executeQuery($pdo, "CREATE TABLE IF NOT EXISTS order_history (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    account_id INT NOT NULL,
-    url_id INT NOT NULL,
-    ordered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    status ENUM('success', 'failed') DEFAULT 'success',
-    UNIQUE KEY unique_order (account_id, url_id)
-)", "Création table 'order_history'");
-
 // Migrations de colonnes
 echo "<h4>Vérification des migrations...</h4>";
 executeQuery($pdo, "ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email VARCHAR(255) NULL", "Migration 'notification_email'");
 executeQuery($pdo, "ALTER TABLE monitored_urls ADD COLUMN IF NOT EXISTS user_id INT NOT NULL DEFAULT 1", "Migration 'user_id'");
 
-// Ajout des clés étrangères (séparé pour éviter les erreurs si elles existent déjà)
+// Ajout des clés étrangères
 echo "<h4>Vérification des clés étrangères...</h4>";
 try {
     $pdo->exec("ALTER TABLE monitored_urls ADD CONSTRAINT fk_url_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE");
     echo "<p style='color:green;'>Clé étrangère fk_url_user ajoutée.</p>";
 } catch (Exception $e) { echo "<p>Clé fk_url_user déjà présente ou ignorée.</p>"; }
-
-try {
-    $pdo->exec("ALTER TABLE infoptimum_accounts ADD CONSTRAINT fk_acc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE");
-    echo "<p style='color:green;'>Clé étrangère fk_acc_user ajoutée.</p>";
-} catch (Exception $e) { echo "<p>Clé fk_acc_user déjà présente ou ignorée.</p>"; }
 
 // Utilisateur par défaut
 $stmt = $pdo->query("SELECT COUNT(*) FROM users");

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stock Infoptimum</title>
-    <link rel="stylesheet" href="style.css?v=1">
+    <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
     <div class="container">
@@ -34,17 +34,6 @@
                     <input type="email" id="notifEmailInput" placeholder="Email pour les alertes" required>
                     <button type="submit">Enregistrer</button>
                 </form>
-                <hr>
-                <h3>Gestion des comptes Infoptimum</h3>
-                <form id="addAccountForm">
-                    <input type="email" id="accEmail" placeholder="Email Compte" required>
-                    <input type="password" id="accPass" placeholder="Mot de passe" required>
-                    <button type="submit">Ajouter Compte</button>
-                </form>
-                <table id="accountsTable" style="width: 100%; margin-top: 10px;">
-                    <thead><tr><th>Email</th><th>Action</th></tr></thead>
-                    <tbody></tbody>
-                </table>
             </div>
 
             <div class="add-url-section">
