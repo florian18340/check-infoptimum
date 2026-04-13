@@ -27,6 +27,9 @@ class StockChecker {
 }
 // --- FIN DE LA CLASSE ---
 
+// Petite pause initiale pour ne pas démarrer en même temps que d'autres scripts
+sleep(rand(1, 5));
+
 // 1. Récupérer la liste des URLs à vérifier
 $api_url = $main_server_url . '/worker_api.php?secret=' . urlencode($secret_key);
 $urls_to_check_json = @file_get_contents($api_url);
@@ -51,8 +54,7 @@ foreach ($urls_to_check as $url_info) {
     
     echo "Vérification de $url ... Statut : $new_status\n";
 
-    // CORRECTION : On notifie le serveur principal à chaque fois, même si le statut n'a pas changé.
-    echo " -> Notification du serveur principal pour mise à jour...\n";
+    echo " -> Notification du serveur principal...\n";
     
     $update_url = $main_server_url . '/update_status.php';
     $options = [
@@ -67,9 +69,10 @@ foreach ($urls_to_check as $url_info) {
         ]
     ];
     $context  = stream_context_create($options);
-    file_get_contents($update_url, false, $context);
+    @file_get_contents($update_url, false, $context);
     
-    sleep(rand(5, 10));
+    // CORRECTION : Pause plus longue pour éviter le rate limiting (429 Too Many Requests)
+    sleep(rand(15, 30));
 }
 
 echo "Travail terminé.\n";
