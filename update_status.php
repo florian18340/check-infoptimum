@@ -21,13 +21,15 @@ write_log("MonitoredUrl.php chargé.");
 
 $secret_key_for_workers = $worker_secret_key ?? 'change-this-default-key';
 
-if (($_POST['secret'] ?? '') !== $secret_key_for_workers) {
+// CORRECTION : Utiliser $_REQUEST pour accepter GET et POST
+if (($_REQUEST['secret'] ?? '') !== $secret_key_for_workers) {
     write_log("ECHEC : Clé secrète invalide.");
     http_response_code(403);
     die('Authentication failed');
 }
 write_log("Clé secrète validée.");
 
+// On continue de lire les données depuis $_POST car c'est ce que le worker envoie
 if (isset($_POST['id']) && isset($_POST['status'])) {
     write_log("Données reçues : ID=" . $_POST['id'] . ", Statut=" . $_POST['status']);
     
@@ -58,7 +60,8 @@ if (isset($_POST['id']) && isset($_POST['status'])) {
         die('DB Error');
     }
 } else {
-    write_log("ECHEC : Données POST 'id' ou 'status' manquantes.");
+    // Si la requête est en GET, on arrive ici, ce qui est normal pour le test
+    write_log("INFO : Requête de test GET reçue, pas de données POST 'id' ou 'status'.");
     http_response_code(400);
     die('Missing parameters');
 }
