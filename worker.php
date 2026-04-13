@@ -1,4 +1,5 @@
 <?php
+// Script à installer sur les serveurs distants
 // --- Worker Script Autonome ---
 // Ce fichier est le seul à déployer sur vos serveurs secondaires.
 

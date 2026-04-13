@@ -1,4 +1,5 @@
 <?php
+// Script sur serveur maitre
 header('Content-Type: application/json');
 require_once 'config.php';
 
