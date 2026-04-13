@@ -1,31 +1,57 @@
 <?php
-// --- Worker Script ---
+// --- Worker Script Autonome ---
 // Ce fichier est le seul à déployer sur vos serveurs secondaires.
 
 // --- CONFIGURATION DU WORKER ---
-// URL du serveur principal où se trouve la base de données et l'API
 $main_server_url = 'https://infoptimum.minibudget.fr'; 
-// La clé secrète que vous avez définie dans le config.php du serveur principal
-$secret_key = 'y7z?ChmzK%Z3QHD]/csZ~45U5e+7{pkG:^@aa322#H752CjR2-';
+$secret_key = 'QtCw5dXV47sf8VUx3WyqCrL558yxnv9kDthP39T86PZDG7k486'; 
 // --- FIN CONFIGURATION ---
 
-require_once 'services/StockChecker.php';
+// --- CLASSE STOCKCHECKER INTÉGRÉE ---
+class StockChecker {
+    private function log($message) {
+        // Le worker n'a pas besoin de logger sur le disque, il affiche à l'écran.
+        // On pourrait aussi envoyer les logs au serveur principal si besoin.
+    }
 
-// 1. Récupérer la liste des URLs à vérifier depuis l'API du serveur principal
-$api_url = $main_server_url . '/worker_api.php?secret=' . $secret_key;
+    public function check($url) {
+        $html = @file_get_contents(trim($url));
+
+        if ($html === false) {
+            return 'error';
+        }
+
+        if (preg_match('/<span[^>]*class=["\']s24["\'][^>]*>.*?(\d+).*?<\/span>/is', $html, $matches)) {
+            $stock = intval($matches[1]);
+            return ($stock > 0) ? 'available' : 'out_of_stock';
+        }
+        if (stripos($html, 'Victime de son succès') !== false || stripos($html, 'id="produit-epuise"') !== false) {
+            return 'out_of_stock';
+        }
+        if (stripos($html, 'images/vp-imprime-coupon.png') !== false || stripos($html, 'Imprimez votre coupon') !== false || stripos($html, 'Ajouter au panier') !== false) {
+            return 'available';
+        }
+        return 'unknown';
+    }
+}
+// --- FIN DE LA CLASSE ---
+
+
+// 1. Récupérer la liste des URLs à vérifier
+$api_url = $main_server_url . '/worker_api.php?secret=' . urlencode($secret_key);
 $urls_to_check_json = @file_get_contents($api_url);
 
 if ($urls_to_check_json === false) {
-    die("Erreur : Impossible de contacter l'API du serveur principal à l'adresse : $api_url");
+    die("Erreur : Impossible de contacter l'API du serveur principal.");
 }
 
 $urls_to_check = json_decode($urls_to_check_json, true);
 
-if (!is_array($urls_to_check)) {
-    die("Erreur : La réponse de l'API n'est pas un JSON valide.");
+if (!is_array($urls_to_check) || isset($urls_to_check['error'])) {
+    die("Erreur : Réponse de l'API invalide. Message : " . ($urls_to_check['error'] ?? 'inconnu'));
 }
 
-echo "Liste de " . count($urls_to_check) . " URLs récupérée depuis le serveur principal.\n";
+echo "Liste de " . count($urls_to_check) . " URLs récupérée.\n";
 
 $checker = new StockChecker();
 
@@ -35,7 +61,6 @@ foreach ($urls_to_check as $url_info) {
     
     echo "Vérification de $url ... Statut : $new_status\n";
 
-    // Si le statut a changé, on notifie le serveur principal pour qu'il mette à jour la DB
     if ($new_status !== $url_info['last_status']) {
         echo " -> Statut changé ! Notification du serveur principal...\n";
         
@@ -55,7 +80,6 @@ foreach ($urls_to_check as $url_info) {
         file_get_contents($update_url, false, $context);
     }
     
-    // Pause pour ne pas surcharger
     sleep(rand(5, 10));
 }
 

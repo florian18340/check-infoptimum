@@ -4,7 +4,7 @@ require_once 'config.php';
 
 // Clé secrète pour s'assurer que seuls vos workers peuvent demander la liste
 // IMPORTANT : Changez cette clé dans votre vrai config.php
-$secret_key_for_workers = $worker_secret_key ?? 'y7z?ChmzK%Z3QHD]/csZ~45U5e+7{pkG:^@aa322#H752CjR2-';
+$secret_key_for_workers = $worker_secret_key ?? 'QtCw5dXV47sf8VUx3WyqCrL558yxnv9kDthP39T86PZDG7k486';
 
 if (($_GET['secret'] ?? '') !== $secret_key_for_workers) {
     http_response_code(403);
