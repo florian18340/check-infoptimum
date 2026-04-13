@@ -27,10 +27,34 @@ class StockChecker {
 }
 // --- FIN DE LA CLASSE ---
 
+function curl_request($url, $post_data = null) {
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0');
+
+    if ($post_data !== null) {
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+    }
+
+    $response = curl_exec($ch);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($error) {
+        die("Erreur cURL : " . $error);
+    }
+    return $response;
+}
+
 sleep(rand(1, 5));
 
+// 1. Récupérer la liste des URLs à vérifier avec cURL
 $api_url = $main_server_url . '/worker_api.php?secret=' . urlencode($secret_key);
-$urls_to_check_json = @file_get_contents($api_url);
+$urls_to_check_json = curl_request($api_url);
 
 if ($urls_to_check_json === false) {
     die("Erreur : Impossible de contacter l'API du serveur principal.");
@@ -39,7 +63,7 @@ if ($urls_to_check_json === false) {
 $urls_to_check = json_decode($urls_to_check_json, true);
 
 if (!is_array($urls_to_check) || isset($urls_to_check['error'])) {
-    die("Erreur : Réponse de l'API invalide.");
+    die("Erreur : Réponse de l'API invalide. Message : " . ($urls_to_check['error'] ?? 'inconnu'));
 }
 
 echo "Liste de " . count($urls_to_check) . " URLs récupérée.\n";
@@ -55,25 +79,18 @@ foreach ($urls_to_check as $url_info) {
     echo " -> Notification du serveur principal...\n";
     
     $update_url = $main_server_url . '/update_status.php';
-    
-    // CORRECTION : Ajout d'un User-Agent à la requête de mise à jour pour tromper le WAF
-    $options = [
-        'http' => [
-            'header'  => "Content-type: application/x-www-form-urlencoded\r\n" .
-                         "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0\r\n",
-            'method'  => 'POST',
-            'content' => http_build_query([
-                'secret' => $secret_key,
-                'id' => $url_info['id'],
-                'status' => $new_status
-            ])
-        ]
+    $post_data = [
+        'secret' => $secret_key,
+        'id' => $url_info['id'],
+        'status' => $new_status
     ];
-    $context  = stream_context_create($options);
-    $result = @file_get_contents($update_url, false, $context);
     
-    if ($result === false) {
-        echo "   -> ECHEC de la notification. Le serveur principal bloque peut-être la requête.\n";
+    $result = curl_request($update_url, $post_data);
+    
+    if (trim($result) !== 'OK') {
+        echo "   -> ECHEC de la notification. Réponse du serveur : " . ($result ?: '[vide]') . "\n";
+    } else {
+        echo "   -> SUCCES de la notification.\n";
     }
 
     sleep(rand(15, 30));
