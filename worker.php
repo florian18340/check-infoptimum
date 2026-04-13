@@ -27,10 +27,8 @@ class StockChecker {
 }
 // --- FIN DE LA CLASSE ---
 
-// Petite pause initiale pour ne pas démarrer en même temps que d'autres scripts
 sleep(rand(1, 5));
 
-// 1. Récupérer la liste des URLs à vérifier
 $api_url = $main_server_url . '/worker_api.php?secret=' . urlencode($secret_key);
 $urls_to_check_json = @file_get_contents($api_url);
 
@@ -41,7 +39,7 @@ if ($urls_to_check_json === false) {
 $urls_to_check = json_decode($urls_to_check_json, true);
 
 if (!is_array($urls_to_check) || isset($urls_to_check['error'])) {
-    die("Erreur : Réponse de l'API invalide. Message : " . ($urls_to_check['error'] ?? 'inconnu'));
+    die("Erreur : Réponse de l'API invalide.");
 }
 
 echo "Liste de " . count($urls_to_check) . " URLs récupérée.\n";
@@ -57,9 +55,12 @@ foreach ($urls_to_check as $url_info) {
     echo " -> Notification du serveur principal...\n";
     
     $update_url = $main_server_url . '/update_status.php';
+    
+    // CORRECTION : Ajout d'un User-Agent à la requête de mise à jour pour tromper le WAF
     $options = [
         'http' => [
-            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+            'header'  => "Content-type: application/x-www-form-urlencoded\r\n" .
+                         "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0\r\n",
             'method'  => 'POST',
             'content' => http_build_query([
                 'secret' => $secret_key,
@@ -69,9 +70,12 @@ foreach ($urls_to_check as $url_info) {
         ]
     ];
     $context  = stream_context_create($options);
-    @file_get_contents($update_url, false, $context);
+    $result = @file_get_contents($update_url, false, $context);
     
-    // CORRECTION : Pause plus longue pour éviter le rate limiting (429 Too Many Requests)
+    if ($result === false) {
+        echo "   -> ECHEC de la notification. Le serveur principal bloque peut-être la requête.\n";
+    }
+
     sleep(rand(15, 30));
 }
 
