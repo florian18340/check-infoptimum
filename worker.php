@@ -27,13 +27,17 @@ class StockChecker {
 }
 // --- FIN DE LA CLASSE ---
 
-function curl_request($url, $post_data = null) {
+function curl_request($url, $post_data = null, $cookie_file) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_TIMEOUT, 20);
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0');
+    
+    // Gestion des cookies pour la session
+    curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie_file);
+    curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie_file);
 
     if ($post_data !== null) {
         curl_setopt($ch, CURLOPT_POST, true);
@@ -42,19 +46,28 @@ function curl_request($url, $post_data = null) {
 
     $response = curl_exec($ch);
     $error = curl_error($ch);
-    curl_close($ch);
-
+    
     if ($error) {
+        curl_close($ch);
         die("Erreur cURL : " . $error);
     }
+    curl_close($ch);
     return $response;
+}
+
+$cookieFile = __DIR__ . '/worker_cookie.txt';
+if (file_exists($cookieFile)) {
+    unlink($cookieFile);
 }
 
 sleep(rand(1, 5));
 
-// 1. Récupérer la liste des URLs à vérifier avec cURL
+// 1. Faire une requête initiale pour obtenir les cookies de session/protection
+curl_request($main_server_url, null, $cookieFile);
+
+// 2. Récupérer la liste des URLs à vérifier avec cURL et les cookies
 $api_url = $main_server_url . '/worker_api.php?secret=' . urlencode($secret_key);
-$urls_to_check_json = curl_request($api_url);
+$urls_to_check_json = curl_request($api_url, null, $cookieFile);
 
 if ($urls_to_check_json === false) {
     die("Erreur : Impossible de contacter l'API du serveur principal.");
@@ -85,16 +98,17 @@ foreach ($urls_to_check as $url_info) {
         'status' => $new_status
     ];
     
-    $result = curl_request($update_url, $post_data);
+    $result = curl_request($update_url, $post_data, $cookieFile);
     
     if (trim($result) !== 'OK') {
         echo "   -> ECHEC de la notification. Réponse du serveur : " . ($result ?: '[vide]') . "\n";
     } else {
         echo "   -> SUCCES de la notification.\n";
     }
-
+    
     sleep(rand(15, 30));
 }
 
 echo "Travail terminé.\n";
+unlink($cookieFile); // Nettoyer le fichier de cookie à la fin
 ?>
