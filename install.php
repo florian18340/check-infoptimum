@@ -18,10 +18,6 @@ function executeQuery($pdo, $sql, $description) {
     }
 }
 
-// Suppression des tables inutiles
-executeQuery($pdo, "DROP TABLE IF EXISTS order_history", "Suppression table 'order_history'");
-executeQuery($pdo, "DROP TABLE IF EXISTS infoptimum_accounts", "Suppression table 'infoptimum_accounts'");
-
 // 1. Table users
 executeQuery($pdo, "CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -38,20 +34,19 @@ executeQuery($pdo, "CREATE TABLE IF NOT EXISTS monitored_urls (
     url VARCHAR(255) NOT NULL,
     last_status ENUM('available', 'out_of_stock', 'error', 'unknown') DEFAULT 'unknown',
     last_check TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 )", "Création table 'monitored_urls'");
 
-// Migrations de colonnes
-echo "<h4>Vérification des migrations...</h4>";
-executeQuery($pdo, "ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_email VARCHAR(255) NULL", "Migration 'notification_email'");
-executeQuery($pdo, "ALTER TABLE monitored_urls ADD COLUMN IF NOT EXISTS user_id INT NOT NULL DEFAULT 1", "Migration 'user_id'");
+// 3. Table workers
+executeQuery($pdo, "CREATE TABLE IF NOT EXISTS workers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    url VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)", "Création table 'workers'");
 
-// Ajout des clés étrangères
-echo "<h4>Vérification des clés étrangères...</h4>";
-try {
-    $pdo->exec("ALTER TABLE monitored_urls ADD CONSTRAINT fk_url_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE");
-    echo "<p style='color:green;'>Clé étrangère fk_url_user ajoutée.</p>";
-} catch (Exception $e) { echo "<p>Clé fk_url_user déjà présente ou ignorée.</p>"; }
 
 // Utilisateur par défaut
 $stmt = $pdo->query("SELECT COUNT(*) FROM users");

@@ -12,4 +12,10 @@ $smtp_user = 'votre_email@example.com';
 $smtp_pass = 'votre_mot_de_passe';
 $smtp_from = 'no-reply@check-infoptimum.local';
 $smtp_secure = 'tls'; // 'tls', 'ssl' ou ''
+
+// Configuration Proxy
+$proxy_host = 'p.webshare.io'; // Ex: p.webshare.io
+$proxy_port = '80'; // Ex: 80 ou 9999
+$proxy_user = 'uoyujbsn-rotate'; // Ex: VotreUsername-rotate
+$proxy_pass = 'jtprxdma17l9'; // Votre mot de passe Webshare
 ?>

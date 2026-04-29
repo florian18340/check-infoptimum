@@ -63,46 +63,8 @@ if (stripos($effectiveUrl, 'mon-compte.php') === false) {
     echo "-> ÉCHEC de la connexion.\n<br>\n";
     die();
 }
-echo "-> Connexion RÉUSSIE !\n<br>\n<br>\n";
-
-// --- ETAPE 2: Charger la page de la vente ---
-echo "2. Accès à la page de la vente...\n<br>\n";
-curl_setopt($ch, CURLOPT_URL, $url);
-curl_setopt($ch, CURLOPT_POST, false);
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-$venteHtml = curl_exec($ch);
-
-// --- ETAPE 3: Chercher le lien d'impression ---
-echo "3. Recherche du lien d'impression...\n<br>\n";
-
-// Regex précise pour trouver le lien avec l'image "vp-imprime-coupon.png"
-if (preg_match('/<a[^>]*href=["\']([^"\']*(?:vente-privee-impression\.php\?ID=\d+)[^"\']*)["\'][^>]*>.*?vp-imprime-coupon\.png.*?<\/a>/i', $venteHtml, $linkMatch)) {
-    $impressionUrl = $linkMatch[1];
-    echo "-> Lien trouvé : " . htmlspecialchars($impressionUrl) . "\n<br>\n";
-    
-    // L'URL peut être relative, on la reconstruit
-    $fullImpressionUrl = "https://www.bourges.infoptimum.com/" . ltrim($impressionUrl, '/');
-    
-    echo "4. Simulation du clic sur le lien...\n<br>\n";
-    
-    curl_setopt($ch, CURLOPT_URL, $fullImpressionUrl);
-    curl_setopt($ch, CURLOPT_POST, false);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge($headers, ['Referer: ' . $url]));
-    
-    $printResponse = curl_exec($ch);
-    $printHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    
-    echo "Code HTTP de l'impression : $printHttpCode\n<br>\n";
-    
-    if ($printHttpCode == 200 || $printHttpCode == 302) {
-        echo "<strong>-> Impression potentiellement VALIDÉE par le serveur !</strong>\n<br>\n";
-    } else {
-        echo "-> ÉCHEC de l'impression.\n<br>\n";
-    }
-    
-} else {
-    die("Impossible de trouver le lien d'impression sur la page. Le compte a peut-être déjà imprimé ce coupon.");
+else{
+    echo 'erreur ouverture';
 }
 
-curl_close($ch);
 ?>

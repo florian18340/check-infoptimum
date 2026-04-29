@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stock Infoptimum</title>
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
     <div class="container">
@@ -34,6 +34,17 @@
                     <input type="email" id="notifEmailInput" placeholder="Email pour les alertes" required>
                     <button type="submit">Enregistrer</button>
                 </form>
+                <hr>
+                <h3>Gestion des Workers</h3>
+                <p>Ajoutez ici les URLs complètes de vos scripts <code>worker.php</code>.</p>
+                <form id="addWorkerForm">
+                    <input type="url" id="workerUrlInput" placeholder="https://worker1.example.com/worker.php" required>
+                    <button type="submit">Ajouter Worker</button>
+                </form>
+                <table id="workersTable">
+                    <thead><tr><th>URL du Worker</th><th>Action</th></tr></thead>
+                    <tbody></tbody>
+                </table>
             </div>
 
             <div class="add-url-section">
@@ -45,7 +56,7 @@
             </div>
 
             <div class="list-section">
-                <button id="checkAllBtn">Vérifier maintenant</button>
+                <button id="checkAllBtn">Vérifier maintenant (via Cron)</button>
                 <table id="stockTable">
                     <thead><tr><th>URL</th><th>État</th><th>Dernière vérification</th><th>Action</th></tr></thead>
                     <tbody></tbody>

@@ -5,14 +5,23 @@
 // --- CONFIGURATION DU WORKER ---
 $main_server_url = 'https://infoptimum.minibudget.fr'; 
 $secret_key = 'QtCw5dXV47sf8VUx3WyqCrL558yxnv9kDthP39T86PZDG7k486'; 
+$report_email = 'florian.mancieri@gmail.com'; 
 // --- FIN CONFIGURATION ---
+
+// --- Initialisation du rapport ---
+$errors = [];
+$checked_count = 0;
+
+// Sécurité
+if (($_GET['secret'] ?? '') !== $secret_key) {
+    $errors[] = "Clé secrète invalide ou manquante.";
+}
 
 // --- CLASSE STOCKCHECKER INTÉGRÉE ---
 class StockChecker {
     public function check($url) {
         $html = @file_get_contents(trim($url));
         if ($html === false) return 'error';
-
         if (preg_match('/<span[^>]*class=["\']s24["\'][^>]*>.*?(\d+).*?<\/span>/is', $html, $matches)) {
             return (intval($matches[1]) > 0) ? 'available' : 'out_of_stock';
         }
@@ -27,88 +36,75 @@ class StockChecker {
 }
 // --- FIN DE LA CLASSE ---
 
-function curl_request($url, $post_data = null, $cookie_file) {
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
-    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0');
-    
-    // Gestion des cookies pour la session
-    curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie_file);
-    curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie_file);
+if (empty($errors)) {
+    $api_url = $main_server_url . '/worker_api.php?secret=' . urlencode($secret_key);
+    $urls_to_check_json = @file_get_contents($api_url);
 
-    if ($post_data !== null) {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
-    }
-
-    $response = curl_exec($ch);
-    $error = curl_error($ch);
-    
-    if ($error) {
-        curl_close($ch);
-        die("Erreur cURL : " . $error);
-    }
-    curl_close($ch);
-    return $response;
-}
-
-$cookieFile = __DIR__ . '/worker_cookie.txt';
-if (file_exists($cookieFile)) {
-    unlink($cookieFile);
-}
-
-sleep(rand(1, 5));
-
-// 1. Faire une requête initiale pour obtenir les cookies de session/protection
-curl_request($main_server_url, null, $cookieFile);
-
-// 2. Récupérer la liste des URLs à vérifier avec cURL et les cookies
-$api_url = $main_server_url . '/worker_api.php?secret=' . urlencode($secret_key);
-$urls_to_check_json = curl_request($api_url, null, $cookieFile);
-
-if ($urls_to_check_json === false) {
-    die("Erreur : Impossible de contacter l'API du serveur principal.");
-}
-
-$urls_to_check = json_decode($urls_to_check_json, true);
-
-if (!is_array($urls_to_check) || isset($urls_to_check['error'])) {
-    die("Erreur : Réponse de l'API invalide. Message : " . ($urls_to_check['error'] ?? 'inconnu'));
-}
-
-echo "Liste de " . count($urls_to_check) . " URLs récupérée.\n";
-
-$checker = new StockChecker();
-
-foreach ($urls_to_check as $url_info) {
-    $url = $url_info['url'];
-    $new_status = $checker->check($url);
-    
-    echo "Vérification de $url ... Statut : $new_status\n";
-
-    echo " -> Notification du serveur principal...\n";
-    
-    $update_url = $main_server_url . '/update_status.php';
-    $post_data = [
-        'secret' => $secret_key,
-        'id' => $url_info['id'],
-        'status' => $new_status
-    ];
-    
-    $result = curl_request($update_url, $post_data, $cookieFile);
-    
-    if (trim($result) !== 'OK') {
-        echo "   -> ECHEC de la notification. Réponse du serveur : " . ($result ?: '[vide]') . "\n";
+    if ($urls_to_check_json === false) {
+        $errors[] = "Impossible de contacter l'API du serveur principal.";
     } else {
-        echo "   -> SUCCES de la notification.\n";
+        $urls_to_check = json_decode($urls_to_check_json, true);
+
+        if (!is_array($urls_to_check) || isset($urls_to_check['error'])) {
+            $errors[] = "Réponse de l'API invalide. Message : " . ($urls_to_check['error'] ?? 'inconnu');
+        } else {
+            $checker = new StockChecker();
+            foreach ($urls_to_check as $url_info) {
+                $new_status = $checker->check($url_info['url']);
+                $checked_count++;
+                
+                if ($new_status !== $url_info['last_status']) {
+                    $update_url = $main_server_url . '/update_status.php';
+                    $options = [
+                        'http' => [
+                            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+                            'method'  => 'POST',
+                            'content' => http_build_query([
+                                'secret' => $secret_key,
+                                'id' => $url_info['id'],
+                                'status' => $new_status
+                            ])
+                        ]
+                    ];
+                    $context  = stream_context_create($options);
+                    @file_get_contents($update_url, false, $context);
+                }
+                sleep(rand(5, 10));
+            }
+        }
     }
-    
-    sleep(rand(15, 30));
 }
 
-echo "Travail terminé.\n";
-unlink($cookieFile); // Nettoyer le fichier de cookie à la fin
+// Envoi de l'email de rapport
+if (!empty($report_email)) {
+    $server_ip = $_SERVER['SERVER_ADDR'] ?? 'inconnue';
+    $status_subject = empty($errors) ? 'SUCCES' : 'ERREUR';
+    $subject = "[Check-Infoptimum] Rapport du Worker " . $server_ip . " - " . $status_subject;
+    
+    $message = "Rapport d'exécution du worker hébergé sur l'IP " . $server_ip . ".\n\n";
+    $message .= "Statut final : " . $status_subject . "\n";
+    $message .= "Heure : " . date('Y-m-d H:i:s') . "\n";
+    $message .= "Nombre d'URLs vérifiées : " . $checked_count . "\n\n";
+    
+    if (!empty($errors)) {
+        $message .= "Détail des erreurs :\n";
+        foreach ($errors as $error) {
+            $message .= "- " . $error . "\n";
+        }
+    } else {
+        $message .= "Le worker a terminé son exécution sans rencontrer d'erreur.\n";
+    }
+    
+    $headers = 'From: no-reply@' . ($_SERVER['HTTP_HOST'] ?? 'worker.local');
+    
+    @mail($report_email, $subject, $message, $headers);
+}
+
+// Affichage final pour le cron
+if (!empty($errors)) {
+    echo "Travail terminé avec des erreurs :\n";
+    print_r($errors);
+} else {
+    echo "Travail terminé. " . $checked_count . " URLs vérifiées.";
+}
 ?>

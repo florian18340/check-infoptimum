@@ -1,26 +1,22 @@
 <?php
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/MonitoredUrl.php';
-require_once __DIR__ . '/../services/StockChecker.php';
-require_once __DIR__ . '/../services/EmailService.php';
+require_once __DIR__ . '/../models/Worker.php'; // Ajout du modèle Worker
 
 class ApiController {
     private $pdo;
-    private $emailConfig;
-    private $proxyConfig;
 
-    public function __construct($pdo, $emailConfig, $proxyConfig) {
+    public function __construct($pdo) {
         $this->pdo = $pdo;
-        $this->emailConfig = $emailConfig;
-        $this->proxyConfig = $proxyConfig;
     }
 
     public function handleRequest() {
         $action = $_GET['action'] ?? '';
         
-        if ($action === 'login') { $this->login(); return; }
-        if ($action === 'register') { $this->register(); return; }
-        if ($action === 'logout') { $this->logout(); return; }
+        if (in_array($action, ['login', 'register', 'logout'])) {
+            $this->{$action}();
+            return;
+        }
 
         if (!isset($_SESSION['user_id'])) {
             http_response_code(401);
@@ -32,9 +28,12 @@ class ApiController {
             case 'list': $this->listUrls(); break;
             case 'add': $this->addUrl(); break;
             case 'delete': $this->deleteUrl(); break;
-            case 'check_all': $this->checkAll(); break;
             case 'get_user_info': $this->getUserInfo(); break;
             case 'update_notification_email': $this->updateNotificationEmail(); break;
+            // Endpoints pour les workers
+            case 'list_workers': $this->listWorkers(); break;
+            case 'add_worker': $this->addWorker(); break;
+            case 'delete_worker': $this->deleteWorker(); break;
             default: echo json_encode(['error' => 'Action inconnue']);
         }
     }
@@ -96,20 +95,25 @@ class ApiController {
         echo json_encode(['success' => $userModel->updateNotificationEmail($_SESSION['user_id'], $data['email'] ?? '')]);
     }
 
-    private function checkAll() {
-        set_time_limit(0);
+    // --- GESTION DES WORKERS ---
+    private function listWorkers() {
+        $workerModel = new Worker($this->pdo);
+        echo json_encode($workerModel->findAllByUserId($_SESSION['user_id']));
+    }
 
-        $urlModel = new MonitoredUrl($this->pdo);
-        $checker = new StockChecker($this->proxyConfig);
-        
-        $urls = $urlModel->findAllByUserId($_SESSION['user_id']);
+    private function addWorker() {
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (filter_var($data['url'] ?? '', FILTER_VALIDATE_URL)) {
+            $workerModel = new Worker($this->pdo);
+            $workerModel->create($_SESSION['user_id'], $data['url']);
+            echo json_encode(['success' => true]);
+        } else { echo json_encode(['success' => false]); }
+    }
 
-        foreach ($urls as $url) {
-            $newStatus = $checker->check($url['url']);
-            $urlModel->updateStatus($url['id'], $newStatus);
-            sleep(1);
-        }
-        echo json_encode(['success' => true]);
+    private function deleteWorker() {
+        $data = json_decode(file_get_contents('php://input'), true);
+        $workerModel = new Worker($this->pdo);
+        echo json_encode(['success' => $workerModel->delete($data['id'] ?? 0, $_SESSION['user_id'])]);
     }
 }
 ?>
