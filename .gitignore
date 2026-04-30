@@ -1,4 +1,6 @@
+# Fichier de configuration local. Ne jamais envoyer sur Git.
 config.php
-config.php.example
-.idea/
-.DS_Store
+
+# Fichiers de log et de session
+*.log
+*.txt
