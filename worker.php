@@ -19,7 +19,7 @@ if (($_GET['secret'] ?? '') !== $secret_key) {
 
 // --- CLASSE STOCKCHECKER INTÉGRÉE ---
 class StockChecker {
-    public function check($url) {
+    public function check($url) : string {
         $html = @file_get_contents(trim($url));
         if ($html === false) return 'error';
         if (preg_match('/<span[^>]*class=["\']s24["\'][^>]*>.*?(\d+).*?<\/span>/is', $html, $matches)) {
