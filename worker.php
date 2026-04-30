@@ -53,22 +53,22 @@ if (empty($errors)) {
                 $new_status = $checker->check($url_info['url']);
                 $checked_count++;
                 
-                if ($new_status !== $url_info['last_status']) {
-                    $update_url = $main_server_url . '/update_status.php';
-                    $options = [
-                        'http' => [
-                            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
-                            'method'  => 'POST',
-                            'content' => http_build_query([
-                                'secret' => $secret_key,
-                                'id' => $url_info['id'],
-                                'status' => $new_status
-                            ])
-                        ]
-                    ];
-                    $context  = stream_context_create($options);
-                    @file_get_contents($update_url, false, $context);
-                }
+                // CORRECTION : On notifie le serveur principal à chaque fois
+                $update_url = $main_server_url . '/update_status.php';
+                $options = [
+                    'http' => [
+                        'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+                        'method'  => 'POST',
+                        'content' => http_build_query([
+                            'secret' => $secret_key,
+                            'id' => $url_info['id'],
+                            'status' => $new_status
+                        ])
+                    ]
+                ];
+                $context  = stream_context_create($options);
+                @file_get_contents($update_url, false, $context);
+
                 sleep(rand(5, 10));
             }
         }
